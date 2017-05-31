@@ -260,12 +260,45 @@ public class GameController : MonoBehaviour {
         sector.groupSectors(groupEmpty, ref grid, gridsize);
 
         int max = 0;
+        foreach (sector.group gr in sector.groups) {
+            int cnt = gr.list.Count;
+            int ends = 0;
+            
+            foreach (sector s in gr.list) {
+                int friends = 0;
+                foreach (sector s1 in gr.list) 
+                    if ((s != s1) && (s.nextTo(s1))) friends++;
+
+                if (friends == 1) ends++;
+            }
+
+            if (ends > 2) {
+#if UNITY_EDITOR
+                if (cnt == 4) Debug.Log("Culling T shaped room");
+                if (cnt == 5) Debug.Log("Culling + shaped room");
+#endif
+                cnt -= (ends - 2);
+            }
+
+
+            max = Mathf.Max(max, gr.list.Count);
+        }
+        
+
+        return max;
+    }
+    
+    
+/*  int BiggestRoom( ) {
+        sector.groupSectors(groupEmpty, ref grid, gridsize);
+
+        int max = 0;
         foreach (sector.group gr in sector.groups) 
             max = Mathf.Max(max, gr.list.Count);
         
 
         return max;
-    }
+    }*/
 
     void TryExplode () {
         sector.groupSectors(CompareColors, ref grid, gridsize);
