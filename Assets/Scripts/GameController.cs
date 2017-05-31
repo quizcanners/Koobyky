@@ -281,7 +281,7 @@ public class GameController : MonoBehaviour {
             }
 
 
-            max = Mathf.Max(max, gr.list.Count);
+            max = Mathf.Max(max, cnt);
         }
         
 
