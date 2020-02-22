@@ -1,7 +1,5 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.IO;
 using System;
@@ -102,12 +100,29 @@ public class sector {
 }
 
 public class GameController : MonoBehaviour {
+    public int pixelsLayer;
+    public int explodedPixelsLayer;
+
     public Color[] colors = { Color.blue, Color.yellow, Color.green };
     public Material blockMaterial;
     public Transform lineupPosition;
     public GameObject blockPrefab;
     public MeshCollider _collider;
-    public TextMesh scoreText;
+    public ScoreTextMGMT scoreText;
+
+
+    public AudioClip startSound;
+    public AudioClip firstBlockSound;
+    public AudioClip newBlockSound;
+    public AudioClip finalBlockSound;
+    public AudioClip scoreSound;
+    public AudioClip noScoreSound;
+    public AudioClip backSound;
+    public AudioClip mouseUpUnfinishedSound;
+    public AudioClip newGameSound;
+  
+
+    public AudioSource audioSource;
 
     public int gridsize = 5;
     public int chanceFor1_4Block = 20;
@@ -134,7 +149,9 @@ public class GameController : MonoBehaviour {
             b.mySector = sec;
             b.transform.position = sectorToPosition(sec);
             b.transform.localScale = Vector3.one;
+            b.gameObject.layer = pixelsLayer;
         }
+        UpdateBG();
     }
 
     BlockScript getSectorValue (int x, int y) {
@@ -148,33 +165,68 @@ public class GameController : MonoBehaviour {
         return  (Vector3.zero + Vector3.up *   (d - sec.y) +  Vector3.right* (d - sec.x))*2;
     }
 
+    Vector2 pressurePos = new Vector2();
+    float pressure = 0;
     void updatePointedSector() {
+        if (placing) pressure = Mathf.Lerp(pressure, 1, Time.deltaTime*5);
+        else pressure = Mathf.Lerp(pressure, 0, Time.deltaTime*0.5f);
+
         RaycastHit hit;
         if (_collider.Raycast(Camera.main.ScreenPointToRay(Input.mousePosition), out hit, 9999)) {
+            pressurePos = hit.textureCoord;
             Vector2 pos = hit.textureCoord * gridsize;
             pointedSector = grid[(int)pos.x, (int)pos.y];
         }
+
+        Shader.SetGlobalVector("_touchPoint", new Vector4(pressurePos.x, pressurePos.y, pressure, 0));
     }
 
     bool isCellMate() {
         return ((currentPlacingBlock == 0) || (givenBlocks[currentPlacingBlock-1].mySector.nextTo(pointedSector)));
     }
+    
+    void UpdateBG() {
+        CameraScaler.inst.RenderTexCamera.Render();
+    }
+    public void bgColor(Color col)
+    {
+        CameraScaler.inst.col = col;
+    }
+    public void bgColor(BlockScript bs) {
+        CameraScaler.inst.col = colors[bs.myColor];
+    }
+
 
     bool TryPlace() {
         updatePointedSector();
-
         BlockScript tmp = (pointedSector!= null) ? pointedSector.myBlock : null;
 
         if ((tmp == null) && (isCellMate()) && ((currentPlacingBlock < blocksToPlace)))  {
             SetSectorValue(pointedSector, givenBlocks[currentPlacingBlock]);
             currentPlacingBlock++;
+            if (currentPlacingBlock < blocksToPlace)
+            {
+                bgColor(givenBlocks[currentPlacingBlock]);
+                if (currentPlacingBlock == 1)
+                    audioSource.PlayOneShot(firstBlockSound, 1f);
+                else
+                    audioSource.PlayOneShot(newBlockSound,1f);
+            }
+            else
+            {
+                bgColor(Color.black);
+                audioSource.PlayOneShot(finalBlockSound,1f);
+            }
+
             return true;
         }
 
         if ((tmp != null) && (currentPlacingBlock > 1) && (tmp == givenBlocks[currentPlacingBlock - 2])) {
             BlockScript rem = givenBlocks[currentPlacingBlock - 1];
-            SetSectorValue(rem.mySector, null);
             BlockToLineup(rem, currentPlacingBlock - 1);
+            audioSource.PlayOneShot(backSound, 1f);
+            bgColor(rem);
+            SetSectorValue(rem.mySector, null);
         }
 
         return false;
@@ -189,12 +241,18 @@ public class GameController : MonoBehaviour {
 
         if (currentPlacingBlock >= blocksToPlace) { TryExplode(); GiveNewBlocks(); placing = false; }
 
-        for (int i= currentPlacingBlock-1; i>=0; i--) {
+        if (currentPlacingBlock > 0)
+            audioSource.PlayOneShot(mouseUpUnfinishedSound);
 
-            SetSectorValue(givenBlocks[i].mySector, null);
+        for (int i= currentPlacingBlock-1; i>=0; i--) {
             BlockToLineup(givenBlocks[i], i);
+            SetSectorValue(givenBlocks[i].mySector, null);
+          
         }
 
+
+        bgColor(givenBlocks[0]);
+        UpdateBG();
         currentPlacingBlock = 0;
         placing = false;
 
@@ -239,12 +297,15 @@ public class GameController : MonoBehaviour {
 
     void BlockToLineup (BlockScript bs, int i) {
         
-        bs.transform.localScale = Vector3.one * 0.5f;
+        bs.transform.localScale = Vector3.one * 0.1f;
         Vector3 pos = lineupPosition.position;
-        pos.x += i - (blocksToPlace - 1f) * 0.5f;
+        pos.x += i;
+            //i - (blocksToPlace - 1f) * 0.5f;
         bs.transform.position = pos;
         givenBlocks[i] = bs;
         currentPlacingBlock = Mathf.Min(i, currentPlacingBlock);
+        bs.gameObject.layer = 0;
+        
     }
 
     bool CompareColors (sector a, sector b) {
@@ -262,8 +323,9 @@ public class GameController : MonoBehaviour {
         int max = 0;
         foreach (sector.group gr in sector.groups) {
             int cnt = gr.list.Count;
+
             int ends = 0;
-            
+
             foreach (sector s in gr.list) {
                 int friends = 0;
                 foreach (sector s1 in gr.list) 
@@ -272,10 +334,11 @@ public class GameController : MonoBehaviour {
                 if (friends == 1) ends++;
             }
 
-            if (ends > 2) {
+            if (ends > 2)
+            {
 #if UNITY_EDITOR
-                if (cnt == 4) Debug.Log("Culling T shaped room");
-                if (cnt == 5) Debug.Log("Culling + shaped room");
+               // if (cnt == 4) Debug.Log("Culling T shaped room");
+              //  if (cnt == 5) Debug.Log("Culling + shaped room");
 #endif
                 cnt -= (ends - 2);
             }
@@ -287,37 +350,55 @@ public class GameController : MonoBehaviour {
 
         return max;
     }
-    
-    
-/*  int BiggestRoom( ) {
-        sector.groupSectors(groupEmpty, ref grid, gridsize);
-
-        int max = 0;
-        foreach (sector.group gr in sector.groups) 
-            max = Mathf.Max(max, gr.list.Count);
-        
-
-        return max;
-    }*/
 
     void TryExplode () {
         sector.groupSectors(CompareColors, ref grid, gridsize);
 
+        int groups = 0;
+        int blocks = 0;
+
+
         foreach (sector.group gr in sector.groups) {
             int count = gr.list.Count;
-            if (count > 2) 
+            if (count > 2) {
                 foreach (sector s in gr.list)
-                    ScoreBlock(s.myBlock, count);
+                    s.myBlock.gameObject.layer = explodedPixelsLayer;
+
+                    blocks += count; groups++; }
         }
 
-        scoreText.text = score.ToString();
-    }
+        ExplodedPixelsCamera.Render();
 
+        int multiplier = groups * blocks;
+        if (multiplier > 0) {
+            shotsToDo += 1 * groups + multiplier / 8;
+            //audioSource.PlayOneShot(scoreSound);
+        }
+
+
+        foreach (sector.group gr in sector.groups) {
+            if (gr.list.Count > 2) 
+                foreach (sector s in gr.list)
+                    ScoreBlock(s.myBlock, multiplier);
+        }
+
+        scoreText.targetScore = score;
+    }
+    
     void GiveNewBlocks() {
 
         int max = BiggestRoom();
 
-        if (max == 0) { StartGame(); return;}
+        if (max == 0) {
+
+            try {
+                //IndiexpoAPI_WebGL.SendScore(score);
+            }
+            catch (Exception ex)
+            {
+                Debug.Log(ex.ToString());
+            }
+            StartGame(); return;}
 
         bool oneFour = UnityEngine.Random.Range(0, 100)< chanceFor1_4Block;
 
@@ -327,6 +408,8 @@ public class GameController : MonoBehaviour {
 
         for (int i=0; i< blocksToPlace; i++)
             BlockToLineup(getBlock(UnityEngine.Random.Range(0, colors.Length)), i);
+
+        bgColor(givenBlocks[0]);
 
     }
 
@@ -344,17 +427,25 @@ public class GameController : MonoBehaviour {
         ClearBlocks();
         GiveNewBlocks();
         score = 0;
-        scoreText.text = score.ToString();
+        scoreText.targetScore = 0;
+        UpdateBG();
+        audioSource.PlayOneShot(newGameSound);
     }
 
     void Start () {
+
+        if (!audioSource)  {
+            audioSource = gameObject.GetComponent<AudioSource>();
+            if (!audioSource)
+                audioSource = gameObject.AddComponent<AudioSource>();
+        }
 
         int cnt = colors.Length;
  
         materials = new Material[colors.Length];
 
         for (int i = 0; i < cnt; i++) {
-            materials[i] = Instantiate<Material>(blockMaterial);
+            materials[i] = Instantiate(blockMaterial);
             materials[i].SetColor("_Color", colors[i]);
         }
 
@@ -367,19 +458,50 @@ public class GameController : MonoBehaviour {
 
             StartGame();
         }
+
+        
     }
 
+    float shotsDelay = 0;
+    float shotsToDo = 0;
+
     private void Update() {
-        if (placing)
+        shotsDelay -= Time.deltaTime;
+        if ((shotsToDo>0) && (shotsDelay < 0)) {
+            audioSource.PlayOneShot(scoreSound);
+            shotsDelay = 0.02f;
+            shotsToDo--;
+        }
+
+
+        if (placing) 
             TryPlace();
+
+#if !UNITY_ANDROID
+        updatePointedSector();
+#endif
+
+
+
+        for (int i= currentPlacingBlock; i<blocksToPlace; i++) {
+            BlockScript b = givenBlocks[i];
+            float scale = b.transform.localScale.x;
+            scale = Mathf.Lerp(scale, (i == currentPlacingBlock) ? 1 : 0.5f, Time.deltaTime * 10);
+            b.transform.localScale = Vector3.one * scale;
+
+        }
+
+
     }
 
     bool LoadGame() {
+
         if (File.Exists(Application.persistentDataPath + "/savedGame.gd"))  {
             BinaryFormatter bf = new BinaryFormatter();
             FileStream file = File.Open(Application.persistentDataPath + "/savedGame.gd", FileMode.Open);
             SaveData sd = (SaveData)bf.Deserialize(file);
             file.Close();
+            
 
             grid = sd.grid;
             blocksToPlace = sd.blocksToPlace;
@@ -390,14 +512,33 @@ public class GameController : MonoBehaviour {
 
             score = sd.score;
 
-            scoreText.text = score.ToString();
+            scoreText.Restart(score);
+
+            bgColor(givenBlocks[0]);
 
             return true;
         }
         return false;
     }
 
-    private void OnApplicationQuit() {
+    public void OnApplicationFocus(bool focus) {
+        if (!focus) Save();
+    }
+
+    public void OnApplicationPause(bool pause)
+    {
+        if (pause) Save();
+    }
+
+    public void OnApplicationQuit()  {
+
+        Save();
+
+
+    }
+
+   void Save()
+    {
         SaveData sd = new SaveData();
 
         foreach (sector s in grid) s.color = (s.myBlock == null) ? -1 : s.myBlock.myColor;
@@ -407,14 +548,10 @@ public class GameController : MonoBehaviour {
         for (int i = 0; i < blocksToPlace; i++)
             sd.givenBlocks[i] = givenBlocks[i].myColor;
 
-    
         BinaryFormatter bf = new BinaryFormatter();
         FileStream file = File.Create(Application.persistentDataPath + "/savedGame.gd");
         bf.Serialize(file, sd);
         file.Close();
-
     }
-
-   
 
 }

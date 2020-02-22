@@ -4,19 +4,33 @@
 Material:
   serializedVersion: 6
   m_ObjectHideFlags: 0
-  m_PrefabParentObject: {fileID: 0}
-  m_PrefabInternal: {fileID: 0}
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
   m_Name: GridMaterial
-  m_Shader: {fileID: 4800000, guid: 2d4b4edf22b243345816bcb2a4817923, type: 3}
+  m_Shader: {fileID: 4800000, guid: 8fa64a292e5956a4a8a4a918d6460d99, type: 3}
   m_ShaderKeywords: 
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
   stringTagMap: {}
   disabledShaderPasses: []
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
+    - _Bump:
+        m_Texture: {fileID: 2800000, guid: 978e35feaae110846936b8945a8669ef, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _BumpDetail:
+        m_Texture: {fileID: 2800000, guid: 4ba4bd69686b130428039fab7eb2119b, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _BumpEx:
+        m_Texture: {fileID: 2800000, guid: d7865648afea10c49aaaab228ed29ce7, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
@@ -37,6 +51,14 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _ExplodedTex:
+        m_Texture: {fileID: 8400000, guid: 44dcae75d93c6e64595f3ff08dc11965, type: 2}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _GridTex:
+        m_Texture: {fileID: 8400000, guid: a7d3bfc96cca1e34fa44bf0dd048d550, type: 2}
+        m_Scale: {x: 0.625, y: 0.625}
+        m_Offset: {x: 0.125, y: 0.125}
     - _MainTex:
         m_Texture: {fileID: 2800000, guid: 978e35feaae110846936b8945a8669ef, type: 3}
         m_Scale: {x: 5, y: 5}
@@ -51,6 +73,14 @@ Material:
         m_Offset: {x: 0, y: 0}
     - _ParallaxMap:
         m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _ParticlesTex:
+        m_Texture: {fileID: 2800000, guid: 5c37c9d7777c92941b5c1a8e2e144c45, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Smudge:
+        m_Texture: {fileID: 2800000, guid: 465b9e052cc829e4a92551db9138886b, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     m_Floats:
