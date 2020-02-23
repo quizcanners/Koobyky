@@ -6,14 +6,8 @@ using System;
 using Object = UnityEngine.Object;
 using UnityEngine.UI;
 using System.IO;
+using Debug = UnityEngine.Debug;
 
-#if QC_USE_NETWORKING
-using UnityEngine.Networking;
-#endif
-
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
 
 namespace QuizCannersUtilities
 {
@@ -21,20 +15,9 @@ namespace QuizCannersUtilities
 #pragma warning disable IDE0019 // Use pattern matching
 #pragma warning disable IDE0018 // Inline variable declaration
 
-    public static class QcUtils {
-
-        public static List<T> TryAdd<T>(this List<T> list, object ass, bool onlyIfNew = true)
-        {
-
-            T toAdd;
-
-            if (list.CanAdd(ref ass, out toAdd, onlyIfNew))
-                list.Add(toAdd);
-
-            return list;
-
-        }
-
+    public static class QcUtils
+    {
+        
         #region TextOperations
 
         private const string BadFormat = "!Bad format: ";
@@ -128,8 +111,6 @@ namespace QuizCannersUtilities
             }
         }
 
-        public static string ToSuccessString(this bool value) => value ? "Success" : "Failed";
-
         #endregion
 
         public static bool CanAdd<T>(this List<T> list, ref object obj, out T conv, bool onlyIfNew = true)
@@ -167,7 +148,7 @@ namespace QuizCannersUtilities
             else
             {
 
-                var tc = typeof(T).TryGetTaggedClasses();
+                var tc = TaggedTypesCfg.TryGetOrCreate(typeof(T));
 
                 if (tc != null && !tc.Types.Contains(objType))
                     return false;
@@ -175,11 +156,9 @@ namespace QuizCannersUtilities
 
             return !onlyIfNew || !list.Contains(conv);
         }
-        
-        private static void AssignUniqueIndex<T>(List<T> list, T el)
-        {
 
-#if !NO_PEGI
+        private static void AssignUniqueIndex<T>(IList<T> list, T el)
+        {
             var ind = el as IGotIndex;
             if (ind == null) return;
             var maxIndex = ind.IndexForPEGI;
@@ -191,34 +170,28 @@ namespace QuizCannersUtilities
                         maxIndex = Mathf.Max(maxIndex, oInd.IndexForPEGI + 1);
                 }
             ind.IndexForPEGI = maxIndex;
-#endif
+
         }
 
-        public static T AddWithUniqueNameAndIndex<T>(List<T> list) => AddWithUniqueNameAndIndex(list, "New "
-            #if !NO_PEGI
-          + typeof(T).ToPegiStringType()
-            #endif
-        );
+        public static T AddWithUniqueNameAndIndex<T>(IList<T> list) => AddWithUniqueNameAndIndex(list, "New " + typeof(T).ToPegiStringType());
 
-        public static T AddWithUniqueNameAndIndex<T>(List<T> list, string name) =>
+        public static T AddWithUniqueNameAndIndex<T>(IList<T> list, string name) =>
             AddWithUniqueNameAndIndex(list, (T)Activator.CreateInstance(typeof(T)), name);
 
-        public static T AddWithUniqueNameAndIndex<T>(List<T> list, T e, string name)
+        public static T AddWithUniqueNameAndIndex<T>(IList<T> list, T e, string name)
         {
             AssignUniqueIndex(list, e);
             list.Add(e);
-#if !NO_PEGI
             var named = e as IGotName;
             if (named != null)
                 named.NameForPEGI = name;
-#endif
             e.AssignUniqueNameIn(list);
             return e;
         }
-        
-        private static void AssignUniqueNameIn<T>(this T el, IReadOnlyCollection<T> list)
+
+        private static void AssignUniqueNameIn<T>(this T el, IList<T> list)
         {
-#if !NO_PEGI
+
             var named = el as IGotName;
             if (named == null) return;
 
@@ -244,65 +217,8 @@ namespace QuizCannersUtilities
             }
 
             named.NameForPEGI = tmpName;
-#endif
+
         }
-        
-        #region Spin Around
-
-        private static Vector2 _camOrbit;
-        private static Vector3 _spinningAround;
-        private static float _orbitDistance = 0;
-        private static bool _orbitingFocused;
-
-        private static float _spinStartTime = 0;
-
-        public static void SpinAround(Vector3 pos, Transform cameraman)
-        {
-            if (Input.GetMouseButtonDown(2))
-            {
-                var before = cameraman.rotation; //cam.transform.rotation;
-                cameraman.transform.LookAt(pos);
-                var rotE = cameraman.rotation.eulerAngles;
-                _camOrbit.x = rotE.y;
-                _camOrbit.y = rotE.x;
-                _orbitDistance = (pos - cameraman.position).magnitude;
-                _spinningAround = pos;
-                cameraman.rotation = before;
-                _orbitingFocused = false;
-                _spinStartTime = Time.time;
-            }
-
-            if (Input.GetMouseButtonUp(2))
-                _orbitDistance = 0;
-
-            if ((!(Math.Abs(_orbitDistance) > float.Epsilon)) || !Input.GetMouseButton(2)) return;
-
-            _camOrbit.x += Input.GetAxis("Mouse X") * 5;
-            _camOrbit.y -= Input.GetAxis("Mouse Y") * 5;
-
-            if (_camOrbit.y <= -360)
-                _camOrbit.y += 360;
-            if (_camOrbit.y >= 360)
-                _camOrbit.y -= 360;
-
-            var rot = Quaternion.Euler(_camOrbit.y, _camOrbit.x, 0);
-            var campos = rot *
-                         (new Vector3(0.0f, 0.0f, -_orbitDistance)) +
-                         _spinningAround;
-
-            cameraman.position = campos;
-            if ((Time.time - _spinStartTime) < 0.2f) return;
-
-            if (!_orbitingFocused)
-            {
-                cameraman.transform.rotation = cameraman.rotation.LerpBySpeed(rot, 300);
-                if (Quaternion.Angle(cameraman.rotation, rot) < 1)
-                    _orbitingFocused = true;
-            }
-            else cameraman.rotation = rot;
-        }
-
-        #endregion
 
         #region Various Managers Classes
 
@@ -310,76 +226,70 @@ namespace QuizCannersUtilities
         {
             private readonly string _name;
             private float _timer;
-            private double _perIntervalCount;
-            private double _max;
-            private double _min = float.PositiveInfinity;
-            private double _average;
-            private double _totalCount;
-            private readonly float _intervalLength = 1f;
+            private double _yieldsCounter;
+            private double _maxYieldsPerInterval;
+            private double _minYieldsPerInterval = float.PositiveInfinity;
+            private double _averageYieldsPerInterval;
+            private double _totalIntervalsProcessed;
+            private readonly float _intervalInSeconds = 1f;
 
             public void Update(float add = 0)
             {
                 _timer += Time.deltaTime;
                 if (Math.Abs(add) > float.Epsilon)
-                    Add(add);
+                    AddYield(add);
 
-                if (_timer <= _intervalLength) return;
+                if (_timer <= _intervalInSeconds) return;
+                
+                _timer -= _intervalInSeconds;
 
+                _maxYieldsPerInterval = Mathf.Max((float)_yieldsCounter, (float)_maxYieldsPerInterval);
+                _minYieldsPerInterval = Mathf.Min((float)_yieldsCounter, (float)_minYieldsPerInterval);
 
-                _timer -= _intervalLength;
+                _totalIntervalsProcessed += 1;
 
-                _max = Mathf.Max((float)_perIntervalCount, (float)_max);
-                _min = Mathf.Min((float)_perIntervalCount, (float)_min);
+                var portion = 1d / _totalIntervalsProcessed;
+                _averageYieldsPerInterval = _averageYieldsPerInterval * (1d - portion) + _yieldsCounter * portion;
 
-                _totalCount += 1;
-
-                var portion = 1d / _totalCount;
-                _average = _average * (1d - portion) + _perIntervalCount * portion;
-
-                _perIntervalCount = 0;
+                _yieldsCounter = 0;
 
             }
 
-            public void Add(float result = 1) => _perIntervalCount += result;
+            public void AddYield(float result = 1) => _yieldsCounter += result;
 
             public void ResetStats()
             {
                 _timer = 0;
-                _perIntervalCount = 0;
-                _max = 0;
-                _min = float.PositiveInfinity;
-                _average = 0;
-                _totalCount = 0;
+                _yieldsCounter = 0;
+                _maxYieldsPerInterval = 0;
+                _minYieldsPerInterval = float.PositiveInfinity;
+                _averageYieldsPerInterval = 0;
+                _totalIntervalsProcessed = 0;
             }
 
             #region Inspector
 
-            public string NameForDisplayPEGI()=> "Avg {0}: {1}/{2}sec [{3} - {4}] ({5}) ".F(_name,
-                ((float)_average).ToString("0.00"),
-                (Math.Abs(_intervalLength - 1d) > float.Epsilon) ? _intervalLength.ToString("0") : "", (int)_min,
-                (int)_max, (int)_totalCount);
+            public string NameForDisplayPEGI() => "Avg {0}: {1}/{2}sec [{3} - {4}] ({5}) ".F(_name,
+                ((float)_averageYieldsPerInterval).ToString("0.00"),
+                (Math.Abs(_intervalInSeconds - 1d) > float.Epsilon) ? _intervalInSeconds.ToString("0") : "", (int)_minYieldsPerInterval,
+                (int)_maxYieldsPerInterval, (int)_totalIntervalsProcessed);
 
-#if !NO_PEGI
             public bool InspectInList(IList list, int ind, ref int edited)
             {
                 if (icon.Refresh.Click("Reset Stats"))
                     ResetStats();
-
-                //   "_name interval".edit(80, ref intervalLength);
-
+                
                 NameForDisplayPEGI().write();
-
-
+                
                 return false;
             }
-#endif
 
             #endregion
 
             public PerformanceTimer(string name = "Speed", float interval = 1f)
             {
                 _name = name;
-                _intervalLength = interval;
+                _intervalInSeconds = interval;
             }
         }
 
@@ -387,11 +297,11 @@ namespace QuizCannersUtilities
         {
             private bool _logged;
             private readonly bool _disabled;
-            private float _lastLogged;
+            private double _lastLogged;
             private int _calls;
             private readonly string message = "error";
 
-            public string NameForDisplayPEGI()=> message + (_disabled ? " Disabled" : " Enabled");
+            public string NameForDisplayPEGI() => message + (_disabled ? " Disabled" : " Enabled");
 
             public ChillLogger(string msg, bool logInBuild = false)
             {
@@ -408,7 +318,7 @@ namespace QuizCannersUtilities
 
             }
 
-            public void Log_Now(string msg, bool asError, UnityEngine.Object obj = null)
+            public void Log_Now(string msg, bool asError, Object obj = null)
             {
 
                 //  if (disabled)
@@ -421,21 +331,21 @@ namespace QuizCannersUtilities
                     msg += " [+ {0} calls]".F(_calls);
 
                 if (_lastLogged > 0)
-                    msg += " [{0} s. later]".F(Time.time - _lastLogged);
+                    msg += " [{0} s. later]".F(QcUnity.TimeSinceStartup() - _lastLogged);
                 else
-                    msg += " [at {0}]".F(Time.time);
+                    msg += " [at {0}]".F(QcUnity.TimeSinceStartup());
 
                 if (asError)
                     Debug.LogError(msg, obj);
                 else
                     Debug.Log(msg, obj);
 
-                _lastLogged = Time.time;
+                _lastLogged = QcUnity.TimeSinceStartup();
                 _calls = 0;
                 _logged = true;
             }
 
-            public void Log_Once(string msg = null, bool asError = true, UnityEngine.Object obj = null)
+            public void Log_Once(string msg = null, bool asError = true, Object obj = null)
             {
 
                 if (!_logged)
@@ -444,16 +354,16 @@ namespace QuizCannersUtilities
                     _calls++;
             }
 
-            public void Log_Interval(float seconds, string msg = null, bool asError = true, UnityEngine.Object obj = null)
+            public void Log_Interval(float seconds, string msg = null, bool asError = true, Object obj = null)
             {
 
-                if (!_logged || (Time.time - _lastLogged > seconds))
+                if (!_logged || (QcUnity.TimeSinceStartup() - _lastLogged > seconds))
                     Log_Now(msg, asError, obj);
                 else
                     _calls++;
             }
 
-            public void Log_Every(int callCount, string msg = null, bool asError = true, UnityEngine.Object obj = null)
+            public void Log_Every(int callCount, string msg = null, bool asError = true, Object obj = null)
             {
 
                 if (!_logged || (_calls > callCount))
@@ -462,241 +372,34 @@ namespace QuizCannersUtilities
                     _calls++;
             }
 
-        }
-
-        public class TextureDownloadManager : IPEGI
-        {
-
-            readonly List<WebRequestMeta> _loadedTextures = new List<WebRequestMeta>();
-
-            class WebRequestMeta : IGotName, IPEGI_ListInspect, IPEGI
+            private static List<string> loggedErrors = new List<string>();
+            public static void LogErrorOnce(string key, string msg, Object target = null)
             {
+                if (loggedErrors.Contains(key))
+                    return;
 
-#if QC_USE_NETWORKING
-            private UnityWebRequest _request;
-#endif
+                loggedErrors.Add(key);
 
-                private string url;
-                public string URL => url;
-                private Texture _texture;
-                private bool _failed = false;
+                if (target)
+                    Debug.LogError(msg, target);
+                else 
+                    Debug.LogError(msg);
+            }
 
-                public string NameForPEGI
-                {
-                    get { return url; }
-                    set { url = value; }
-                }
+            private static List<string> loggedWarnings = new List<string>();
+            public static void LogWarningOnce(string key, string msg, Object target = null)
+            {
+                if (loggedWarnings.Contains(key))
+                    return;
 
-                private Texture Take()
-                {
-                    var tmp = _texture;
-                    _texture = null;
-                    _failed = false;
-                    DisposeRequest();
-                    return tmp;
-                }
+                loggedWarnings.Add(key);
 
-                public bool TryGetTexture(out Texture tex, bool remove = false)
-                {
-                    tex = _texture;
-
-                    if (remove && _texture) Take();
-
-                    if (_failed) return true;
-
-
-#if QC_USE_NETWORKING
-                if (_request != null)
-                {
-                    if (_request.isNetworkError || _request.isHttpError)
-                    {
-
-                        _failed = true;
-
-#if UNITY_EDITOR
-                        Debug.Log(_request.error);
-#endif
-                        DisposeRequest();
-                        return true;
-                    }
-
-                    if (_request.isDone)
-                    {
-                        if (_texture)
-                            _texture.DestroyWhatever();
-                        _texture = ((DownloadHandlerTexture)_request.downloadHandler).texture;
-                        DisposeRequest();
-                        tex = _texture;
-
-                        if (remove && _texture)
-                            Take();
-                    }
-                    else return false;
-                }
-                else if (!_texture) Start();
-#endif
-
-                    return true;
-                }
-
-                void Start()
-                {
-
-#if QC_USE_NETWORKING
-                _request?.Dispose();
-                _request = UnityWebRequestTexture.GetTexture(url);
-                _request.SendWebRequest();
-                _failed = false;
-#else
-                Debug.Log("Can't Load {0} : QC_USE_NETWORKING is disabled".F(url));
-#endif
-                }
-
-                public WebRequestMeta(string URL)
-                {
-                    url = URL;
-                    Start();
-                }
-
-                private void DisposeRequest()
-                {
-
-#if QC_USE_NETWORKING
-                _request?.Dispose();
-                _request = null;
-#endif
-                }
-
-                public void Dispose()
-                {
-                    if (_texture)
-                        _texture.DestroyWhatever();
-
-                    DisposeRequest();
-                }
-
-                #region Inspector
-
-#if !NO_PEGI
-                public bool InspectInList(IList list, int ind, ref int edited)
-                {
-                    var changed = false;
-                    Texture tex;
-                    TryGetTexture(out tex);
-
-
-#if QC_USE_NETWORKING
-                if (_request != null)
-                    "Loading".write(60);
-                if (_failed)
-                    "Failed".write(50);
-
-                if (_texture)
-                {
-                    if (icon.Refresh.Click())
-                        Start();
-
-                    if (_texture.Click())
-                        edited = ind;
-
-                }
+                if (target)
+                    Debug.LogWarning(msg, target);
                 else
-                {
-
-                    if (_failed)
-                    {
-                        if (icon.Refresh.Click("Failed"))
-                            Start();
-                        "Failed ".F(url).write(40);
-                    }
-                    else
-                    {
-                        icon.Active.write();
-                        "Loading ".write(40);
-                    }
-
-                }
-#else
-                    "QC_USE_NETWORKING is disabled (to prevent unwanted android permissions)".writeWarning();
-
-                    pegi.nl();
-
-                    if ("Enable QC_USE_NETWORKING".Click())
-                        QcUnity.SetPlatformDirective("QC_USE_NETWORKING", true);
-
-#endif
-                    url.write();
-                    return changed;
-                }
-
-                public bool Inspect()
-                {
-                    Texture tex;
-                    TryGetTexture(out tex);
-
-                    if (_texture)
-                        pegi.write(_texture, 200);
-
-                    return false;
-                }
-#endif
-
-                #endregion
+                    Debug.LogWarning(msg);
             }
 
-            public string GetURL(int ind)
-            {
-                var el = _loadedTextures.TryGet(ind);
-                return (el == null) ? "" : el.URL;
-            }
-
-            public bool TryGetTexture(int ind, out Texture tex, bool remove = false)
-            {
-                tex = null;
-                var el = _loadedTextures.TryGet(ind);
-                return (el != null) ? el.TryGetTexture(out tex, remove) : true;
-            }
-
-            public int StartDownload(string address)
-            {
-                var el = _loadedTextures.GetByIGotName(address);
-
-                if (el == null)
-                {
-                    el = new WebRequestMeta(address);
-                    _loadedTextures.Add(el);
-                }
-
-                return _loadedTextures.IndexOf(el);
-            }
-
-            public void Dispose()
-            {
-                foreach (var t in _loadedTextures)
-                    t.Dispose();
-
-                _loadedTextures.Clear();
-            }
-
-            #region Inspector
-
-#if !NO_PEGI
-            int inspected = -1;
-            string tmp = "";
-            public bool Inspect()
-            {
-
-                var changed = "Textures and Requests".write_List(_loadedTextures, ref inspected);
-
-                "URL".edit(30, ref tmp);
-                if (tmp.Length > 0 && icon.Add.Click().nl())
-                    StartDownload(tmp);
-
-                return changed;
-            }
-#endif
-
-            #endregion
         }
 
         [Serializable]
@@ -705,15 +408,13 @@ namespace QuizCannersUtilities
 
             [SerializeField] public string folderName = "ScreenShoots";
 
-
-#if !NO_PEGI
-
             private bool _showAdditionalOptions;
 
             public bool Inspect()
             {
+                pegi.nl();
 
-                "Camera ".edit(60, ref cameraToTakeScreenShotFrom);
+                "Camera ".selectInScene(ref cameraToTakeScreenShotFrom);
 
                 pegi.nl();
 
@@ -722,7 +423,7 @@ namespace QuizCannersUtilities
                 "Img Name".edit(90, ref screenShotName);
                 var path = Path.Combine(QcUnity.GetDataPathWithout_Assets_Word(), folderName);
                 if (icon.Folder.Click("Open Screen Shots Folder : {0}".F(path)))
-                    QcFile.ExplorerUtils.OpenPath(path);
+                    QcFile.Explorer.OpenPath(path);
 
                 pegi.nl();
 
@@ -742,6 +443,8 @@ namespace QuizCannersUtilities
                     else if ("Take Screen Shoot".Click("Render Screenshoot from camera").nl())
                         RenderToTextureManually();
                 }
+
+                pegi.nl();
 
                 if ("Other Options".foldout(ref _showAdditionalOptions).nl())
                 {
@@ -764,7 +467,7 @@ namespace QuizCannersUtilities
 
 
                     if (icon.Folder.Click())
-                        QcFile.ExplorerUtils.OpenPath(QcUnity.GetDataPathWithout_Assets_Word());
+                        QcFile.Explorer.OpenPath(QcUnity.GetDataPathWithout_Assets_Word());
 
                     "Game View Needs to be open for this to work".fullWindowDocumentationClickOpen();
 
@@ -774,13 +477,12 @@ namespace QuizCannersUtilities
 
                 return false;
             }
-#endif
 
             private bool grab;
 
             public Camera cameraToTakeScreenShotFrom;
             public int UpScale = 4;
-            public bool AlphaBackground = true;
+            public bool AlphaBackground;
 
             [NonSerialized] private RenderTexture forScreenRenderTexture;
             [NonSerialized] private Texture2D screenShotTexture2D;
@@ -815,6 +517,21 @@ namespace QuizCannersUtilities
                 cam.Render();
                 RenderTexture.active = forScreenRenderTexture;
                 screenShotTexture2D.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+
+                if (!AlphaBackground)
+                {
+                    var pixels = screenShotTexture2D.GetPixels32();
+
+                    for (int i=0; i<pixels.Length; i++)
+                    {
+                        var col = pixels[i];
+                        col.a = 255;
+                        pixels[i] = col;
+                    }
+
+                    screenShotTexture2D.SetPixels32(pixels);
+                }
+
                 screenShotTexture2D.Apply();
 
                 cam.targetTexture = null;
@@ -822,7 +539,7 @@ namespace QuizCannersUtilities
 
                 cam.clearFlags = clearFlags;
 
-                QcFile.SaveUtils.SaveTextureOutsideAssetsFolder("ScreenShoots", GetScreenShotName(), ".png", screenShotTexture2D);
+                QcFile.Saving.TextureOutsideAssetsFolder("ScreenShoots", GetScreenShotName(), ".png", screenShotTexture2D);
             }
 
             public void OnPostRender()
@@ -840,7 +557,7 @@ namespace QuizCannersUtilities
                     screenShotTexture2D.ReadPixels(new Rect(0, 0, Screen.width, Screen.height), 0, 0, false);
                     screenShotTexture2D.Apply();
 
-                    QcFile.SaveUtils.SaveTextureOutsideAssetsFolder("ScreenShoots", GetScreenShotName(), ".png",
+                    QcFile.Saving.TextureOutsideAssetsFolder("ScreenShoots", GetScreenShotName(), ".png",
                         screenShotTexture2D);
 
                 }
@@ -886,8 +603,7 @@ namespace QuizCannersUtilities
         }
 
         [Serializable]
-        public class MaterialPlaytimeInstancer : IPEGI_ListInspect
-        {
+        public class MaterialPlaytimeInstancer {
             [SerializeField] public List<Graphic> materialUsers = new List<Graphic>();
             [NonSerialized] private Material labelMaterialInstance;
 
@@ -918,13 +634,6 @@ namespace QuizCannersUtilities
                     return labelMaterialInstance;
                 }
             }
-#if !NO_PEGI
-            public bool InspectInList(IList list, int ind, ref int edited)
-            {
-                "works".write();
-                return false;
-            }
-#endif
         }
 
         [Serializable]
@@ -986,26 +695,47 @@ namespace QuizCannersUtilities
                 this.instantiateInEditor = instantiateInEditor;
             }
         }
-
-
+        
         [Serializable]
-        public struct DynamicRangeFloat : ICfg
+        public struct DynamicRangeFloat : ICfg, IPEGI
         {
 
             [SerializeField] public float min;
             [SerializeField] public float max;
-            [SerializeField] public float value;
 
-            public void SetValue(float nVal)
+            [SerializeField] private float _value;
+
+            public float Value
             {
-                value = nVal;
-                min = Mathf.Min(min, value);
-                max = Mathf.Max(max, value);
+                get { return _value; }
+
+                set
+                {
+                    _value = value;
+                    min = Mathf.Min(min, value);
+                    max = Mathf.Max(max, value);
+                    UpdateRange(1);
+                }
             }
 
             #region Inspector
 
-#if !NO_PEGI
+            private float dynamicMin;
+            private float DynamicMin { set { dynamicMin = Mathf.Clamp(dynamicMin, min, max); } }
+            private float dynamicMax;
+            private float DynamicMax { set { dynamicMax = Mathf.Clamp(dynamicMax, min, max); } }
+
+            private void UpdateRange(float by = 1)
+            {
+
+                float width = dynamicMax - dynamicMin;
+
+                width *= by * 0.5f;
+
+                dynamicMin = Mathf.Max(min, _value - width);
+                dynamicMax = Mathf.Min(max, _value + width);
+            }
+
             private bool _showRange;
 
             public bool Inspect()
@@ -1013,58 +743,87 @@ namespace QuizCannersUtilities
                 var changed = false;
                 var rangeChanged = false;
 
-                var tmp = value;
-                if (pegi.edit(ref tmp, min, max).changes(ref changed))
-                    value = tmp;
+                if ("><".Click())
+                    UpdateRange(0.3f);
+
+                pegi.edit(ref _value, dynamicMin, dynamicMax).changes(ref changed);
+                //    Value = _value;
+
+                if ("<>".Click())
+                    UpdateRange(3f);
+             
 
                 if (!_showRange && icon.Edit.ClickUnFocus("Edit Range", 20))
                     _showRange = true;
 
                 if (_showRange)
                 {
-                    pegi.nl();
+                  
 
                     if (icon.FoldedOut.ClickUnFocus("Hide Range"))
                         _showRange = false;
+
+                    pegi.nl();
+
+                    "[{0} : {1}] - {2}".F(dynamicMin, dynamicMax, "Focused Range").nl();
 
                     "Range: [".write(60);
 
                     var before = min;
 
-                    tmp = min;
 
-                    if (pegi.editDelayed(ref tmp, 40).changes(ref rangeChanged))
+                    if (pegi.editDelayed(ref min, 40).changes(ref rangeChanged))
                     {
-                        min = tmp;
                         if (min >= max)
                             max = min + (max - before);
+
+
                     }
 
                     "-".write(10);
-                    tmp = max;
-                    if (pegi.editDelayed(ref tmp, 40).changes(ref rangeChanged))
-                    {
-                        max = tmp;
-                        min = Mathf.Min(min, max);
 
+                    if (pegi.editDelayed(ref max, 40).changes(ref rangeChanged))
+                    {
+                        min = Mathf.Min(min, max);
                     }
 
                     "]".write(10);
+
+                    "Use >< to shrink range around current value for more precision. And <> to expand range."
+                        .fullWindowDocumentationClickOpen("About <> & ><");
+
+                    if (icon.Refresh.Click())
+                    {
+                        dynamicMin = min;
+                        dynamicMax = max;
+
+                    }
 
                     pegi.nl();
 
                     "Tap Enter to apply Range change in the field (will Clamp current value)".writeHint();
 
+
+
                     pegi.nl();
 
                     if (rangeChanged)
-                        value = Mathf.Clamp(value, min, max);
+                    {
+                        Value = Mathf.Clamp(_value, min, max);
+
+                        if (Mathf.Abs(dynamicMin - dynamicMax) < (float.Epsilon * 10))
+                        {
+                            dynamicMin = Mathf.Clamp(dynamicMin - float.Epsilon * 10, min, max);
+                            dynamicMax = Mathf.Clamp(dynamicMax + float.Epsilon * 10, min, max);
+                        }
+                    }
+
+
                 }
 
 
                 return changed | rangeChanged;
             }
-#endif
 
             #endregion
 
@@ -1072,10 +831,16 @@ namespace QuizCannersUtilities
 
             public CfgEncoder Encode() => new CfgEncoder()
                 .Add_IfNotEpsilon("m", min)
-                .Add_IfNotEpsilon("v", value)
+                .Add_IfNotEpsilon("v", Value)
                 .Add_IfNotEpsilon("x", max);
 
-            public void Decode(string data) => data.DecodeTagsFor(this);
+            public void Decode(string data)
+            {
+              
+                new CfgDecoder(data).DecodeTagsFor(ref this);
+                dynamicMin = min;
+                dynamicMax = max;
+            }
 
             public bool Decode(string tg, string data)
             {
@@ -1085,7 +850,7 @@ namespace QuizCannersUtilities
                         min = data.ToFloat();
                         break;
                     case "v":
-                        value = data.ToFloat();
+                        Value = data.ToFloat();
                         break;
                     case "x":
                         max = data.ToFloat();
@@ -1102,11 +867,56 @@ namespace QuizCannersUtilities
             {
                 this.min = min;
                 this.max = max;
-                this.value = value;
-#if !NO_PEGI
+                dynamicMin = min;
+                dynamicMax = max;
+                _value = value;
+
                 _showRange = false;
-#endif
+
             }
+        }
+
+        private static readonly ScreenShootTaker screenShots = new ScreenShootTaker();
+
+        private static readonly ICfgObjectExplorer iCfgExplorer = new ICfgObjectExplorer();
+
+        private static readonly EncodedJsonInspector jsonInspector = new EncodedJsonInspector();
+
+        #endregion
+
+        #region Inspect Inspector 
+        private static int inspectedSection = -1;
+
+        public static bool InspectInspector()
+        {
+            var changed = false;
+
+            if ("Coroutines [{0}]".F(QcAsync.GetActiveCoroutinesCount).enter(ref inspectedSection, 0).nl())
+                QcAsync.InspectManagedCoroutines().nl(ref changed);
+
+            "Screen Shots".enter_Inspect(screenShots, ref inspectedSection, 1).nl(ref changed);
+
+            "Json Inspector".enter_Inspect(jsonInspector, ref inspectedSection, 2).nl();
+
+            if ("ICfg Inspector".enter(ref inspectedSection, 3).nl())
+                iCfgExplorer.Inspect(null).nl(ref changed);
+
+            if ("Gui Styles".enter(ref inspectedSection, 4).nl())
+            {
+                PEGI_Styles.Inspect().nl();
+            }
+
+            if (inspectedSection == -1)
+            {
+                if ("Player Data Folder".Click().nl())
+                    QcFile.Explorer.OpenPersistentFolder();
+
+                if (Application.isEditor && "Editor Data Folder".Click().nl())
+                    QcFile.Explorer.OpenPath("C:/Users/{0}/AppData/Local/Unity/Editor/Editor.log".F(Environment.UserName));
+
+            }
+
+            return changed;
         }
 
         #endregion

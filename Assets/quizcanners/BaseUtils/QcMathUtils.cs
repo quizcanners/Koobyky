@@ -3,39 +3,52 @@ using System.Collections.Generic;
 using UnityEngine;
 using System;
 
-namespace QuizCannersUtilities {
+namespace QuizCannersUtilities
+{
 
 #pragma warning disable IDE0034 // Simplify 'default' expression
 #pragma warning disable IDE0019 // Use pattern matching
 #pragma warning disable IDE0018 // Inline variable declaration
 
-    public static partial class QcMath {
+    public enum ColorChanel { R = 0, G = 1, B = 2, A = 3 }
+
+    [Flags]
+    public enum ColorMask { R = 1, G = 2, B = 4, A = 8, Color = 7, All = 15 }
+
+
+    public static partial class QcMath
+    {
+
+        #region Double
+
+        public static double Clamp(double value, double min, double max) => value < min ? min : (value > max ? max : value);
+
+        public static double Clamp01(double value) => value < 0 ? 0 : (value > 1 ? 1 : value);
+
+        #endregion
 
         #region Checks
-        
+
         public static bool IsNaN(this Vector3 q) => float.IsNaN(q.x) || float.IsNaN(q.y) || float.IsNaN(q.z);
-        
-        public static bool IsNaN(this float f) => float.IsNaN(f);
         
         #endregion
 
         #region Time
 
-        public static double Miliseconds_To_Seconds(this double interval) => (interval*0.001);
+        public static double Miliseconds_To_Seconds(double interval) => (interval * 0.001);
 
-        public static double Seconds_To_Miliseconds(this double interval) => (interval * 1000);
+        public static double Seconds_To_Miliseconds(double interval) => (interval * 1000);
 
-        public static float Miliseconds_To_Seconds(this float interval) => (interval * 0.001f);
+        public static float Miliseconds_To_Seconds(float interval) => (interval * 0.001f);
 
-        public static float Seconds_To_Miliseconds(this float interval) => (interval * 1000);
+        public static float Seconds_To_Miliseconds(float interval) => (interval * 1000);
 
         #endregion
-        
+
         #region Adjust
 
-        public static Vector2 ToM11Space(this Vector2 v2) => (v2 - new Vector2(Mathf.Floor(v2.x), Mathf.Floor(v2.y)));
-
-        public static Vector2 To01Space(this Vector2 v2) {
+        public static Vector2 To01Space(this Vector2 v2)
+        {
 
             v2.x = v2.x % 1;
             v2.y = v2.y % 1;
@@ -49,25 +62,11 @@ namespace QuizCannersUtilities {
         }
 
         public static Vector2 Floor(this Vector2 v2) => new Vector2(Mathf.Floor(v2.x), Mathf.Floor(v2.y));
-        
-        public static float ClampZeroTo(this float value, float max)
-        {
-            value = Mathf.Max(0, Mathf.Min(value, max - 1));
-            return value;
-        }
 
-        public static bool ClampIndexToLength(this Array ar, ref int value, int min = 0)
+        public static bool ClampIndexToCount(this ICollection list, ref int value, int min = 0)
         {
-            if (!ar.IsNullOrEmpty()) {
-                value = Mathf.Max(min, Mathf.Min(value, ar.Length - 1));
-                return true;
-            }
-            return false;
-        }
-
-        public static bool ClampIndexToCount(this IList list, ref int value, int min = 0)
-        {
-            if (!list.IsNullOrEmpty()) {
+            if (!list.IsNullOrEmptyCollection())
+            {
                 value = Mathf.Max(min, Mathf.Min(value, list.Count - 1));
                 return true;
             }
@@ -80,48 +79,10 @@ namespace QuizCannersUtilities {
             return ((new Vector3(Mathf.Round(v3.x), Mathf.Round(v3.y), Mathf.Round(v3.z))) * by);
         }
 
-        public static Vector3 FloorDiv(Vector3 v3, int by)
-        {
-            v3 /= by;
-            return ((new Vector3((int)v3.x, (int)v3.y, (int)v3.z)) * by);
-        }
-
-        public static Vector3 Round(Vector3 v3)
-        {
-            return new Vector3(Mathf.Round(v3.x), Mathf.Round(v3.y), Mathf.Round(v3.z));
-        }
-
-        public static Vector3 Floor(Vector3 v3)
-        {
-            return new Vector3((int)v3.x, (int)v3.y, (int)v3.z);
-        }
-
         #endregion
 
         #region Trigonometry
-        static List<Vector3> randomNormalized = new List<Vector3>();
-        static int currentNormalized = 0;
-        
-        public static Vector3 GetRandomPointWithin(this Vector3 v3)
-        {
 
-            const int maxRands = 512;
-
-            if (randomNormalized.Count < maxRands)
-            {
-                var newOne = UnityEngine.Random.insideUnitSphere;
-                randomNormalized.Add(newOne);
-                v3.Scale(newOne);
-            }
-            else
-            {
-                currentNormalized = (currentNormalized + 1) % maxRands;
-                v3.Scale(randomNormalized[currentNormalized]);
-            }
-
-            return v3;
-        }
-        
         public static Vector3 BezierCurve(float portion, Vector3 from, Vector3 mid, Vector3 to)
         {
             Vector3 m1 = Vector3.LerpUnclamped(from, mid, portion);
@@ -133,7 +94,6 @@ namespace QuizCannersUtilities {
              (vec.x < 0) ? 360 - (Mathf.Atan2(vec.x, vec.y) * Mathf.Rad2Deg * -1) :
              Mathf.Atan2(vec.x, vec.y) * Mathf.Rad2Deg;
         
-
         public static bool IsAcute(float a, float b, float c)
         {
             if (c == 0) return true;
@@ -145,7 +105,7 @@ namespace QuizCannersUtilities {
             return (longest > (c * c + side * side));
 
         }
-        
+
         public static bool IsPointOnLine(float a, float b, float line, float percision)
         {
             percision *= line;
@@ -173,7 +133,7 @@ namespace QuizCannersUtilities {
 
             return ((line > pnta) && (line > pntb) && ((pnta + pntb) < line + percision));
         }
-        
+
         public static float HeronHforBase(float _base, float a, float b)
         {
             float sidesSum = a + b;
@@ -188,12 +148,13 @@ namespace QuizCannersUtilities {
 
         public static bool LinePlaneIntersection(out Vector3 intersection, Vector3 linePoint, Vector3 lineVec, Vector3 planeNormal, Vector3 planePoint)
         {
-            
+
             float dotNumerator = Vector3.Dot(planePoint - linePoint, planeNormal);
             float dotDenominator = Vector3.Dot(lineVec, planeNormal);
 
             //line and plane are not parallel
-            if (dotDenominator != 0.0f) {
+            if (dotDenominator != 0.0f)
+            {
 
                 float length = dotNumerator / dotDenominator;
 
@@ -207,7 +168,7 @@ namespace QuizCannersUtilities {
             intersection = Vector3.zero;
 
             return false;
-            
+
         }
 
         public static Vector3 GetNormalOfTheTriangle(Vector3 a, Vector3 b, Vector3 c)
@@ -232,14 +193,13 @@ namespace QuizCannersUtilities {
 
             return average;
         }
-
-
+        
         #endregion
 
         #region Transformations
 
         public static Vector2 YX(this Vector2 vec) => new Vector2(vec.y, vec.x);
-        
+
         public static Vector2 ZW(this Vector4 vec) => new Vector2(vec.z, vec.w);
 
         public static Vector2 XY(this Vector4 vec) => new Vector2(vec.x, vec.y);
@@ -248,7 +208,8 @@ namespace QuizCannersUtilities {
 
         public static Vector2 ZY(this Vector4 vec) => new Vector2(vec.z, vec.y);
 
-        public static Vector2 Clamp01(this Vector2 v2) {
+        public static Vector2 Clamp01(this Vector2 v2)
+        {
             v2.x = Mathf.Clamp01(v2.x);
             v2.y = Mathf.Clamp01(v2.y);
 
@@ -264,7 +225,7 @@ namespace QuizCannersUtilities {
             return v3;
         }
 
-        public static Vector3 Clamp01(this Vector4 v4)
+        public static Vector4 Clamp01(this Vector4 v4)
         {
             v4.x = Mathf.Clamp01(v4.x);
             v4.y = Mathf.Clamp01(v4.y);
@@ -274,7 +235,8 @@ namespace QuizCannersUtilities {
             return v4;
         }
 
-        public static Vector2 Abs(this Vector2 v2) {
+        public static Vector2 Abs(this Vector2 v2)
+        {
             v2.x = Mathf.Abs(v2.x);
             v2.y = Mathf.Abs(v2.y);
             return v2;
@@ -322,29 +284,29 @@ namespace QuizCannersUtilities {
         }
 
         public static Vector4 ToVector4(this Color col) => new Vector4(col.r, col.g, col.b, col.a);
-        
+
         public static Vector2 XY(this Vector3 vec) => new Vector2(vec.x, vec.y);
 
         public static Vector4 ToVector4(this Vector2 v2, float z = 0, float w = 0) => new Vector4(v2.x, v2.y, z, w);
 
         public static Vector2 ToVector2(this Vector3 v3) => new Vector2(v3.x, v3.y);
-        
+
         public static Vector4 ToVector4(this Vector3 v3, float w = 0) => new Vector4(v3.x, v3.y, v3.z, w);
 
         public static Vector3 ToVector3(this Vector2 v2, float z = 0) => new Vector3(v2.x, v2.y, z);
 
         public static Vector4 ToVector4(this Vector2 v2xy, Vector2 v2zw) => new Vector4(v2xy.x, v2xy.y, v2zw.x, v2zw.y);
 
-        public static Vector4 ToVector4(this Rect rect) => new Vector4(rect.x, rect.y, rect.width, rect.height);
+        public static Vector4 ToVector4(this Rect rect, bool useMinMax) =>
+            useMinMax ? new Vector4(rect.xMin, rect.yMin, rect.xMax, rect.yMax) : new Vector4(rect.x, rect.y, rect.width, rect.height);
 
-        public static Rect ToRect(this Vector4 v4) => new Rect(v4.x,v4.y,v4.z,v4.w);
+        public static Rect ToRect(this Vector4 v4, bool usingMinMax)
+            => usingMinMax ? Rect.MinMaxRect(v4.x, v4.y, v4.z, v4.w) : new Rect(v4.x, v4.y, v4.z, v4.w);
 
         #endregion
-
-
+        
         #region Color Channel and Mask
-
-
+        
         public static string ToText(this ColorMask icon)
         {
             switch (icon)
@@ -370,8 +332,7 @@ namespace QuizCannersUtilities {
                 default: return "Unknown channel";
             }
         }
-
-
+        
         public static float GetValueFrom(this ColorChanel chan, Color col)
         {
             switch (chan)
@@ -456,86 +417,80 @@ namespace QuizCannersUtilities {
         public static bool HasFlag(this ColorMask mask, int flag) => (mask & (ColorMask)(Mathf.Pow(2, flag))) != 0;
 
         public static bool HasFlag(this ColorMask mask, ColorMask flag) => (mask & flag) != 0;
-
-        public enum ColorChanel { R = 0, G = 1, B = 2, A = 3 }
-
-        [Flags]
-        public enum ColorMask { R = 1, G = 2, B = 4, A = 8, Color = 7, All = 15 }
-
+        
         #endregion
-
-        [Serializable]
-        public struct MyIntVec2
-        {
-            public int x;
-            public int y;
-
-            public int Max => x > y ? x : y;
-
-            public override string ToString() => "x:" + x + " y:" + y;
-
-            public void Clamp(int min, int max)
-            {
-                x = Mathf.Clamp(x, min, max);
-                y = Mathf.Clamp(y, min, max);
-            }
-
-            public void Clamp(int min, MyIntVec2 max)
-            {
-                x = Mathf.Clamp(x, min, max.x);
-                y = Mathf.Clamp(y, min, max.y);
-            }
-
-            public MyIntVec2 MultiplyBy(int val)
-            {
-                x *= val;
-                y *= val;
-                return this;
-            }
-
-            public MyIntVec2 Subtract(MyIntVec2 other)
-            {
-                x -= other.x;
-                y -= other.y;
-                return this;
-            }
-
-            public Vector2 ToFloat() => new Vector2(x, y);
-
-            public MyIntVec2 From(Vector2 vec)
-            {
-                x = (int)vec.x;
-                y = (int)vec.y;
-                return this;
-            }
-
-            public MyIntVec2(MyIntVec2 other)
-            {
-                x = other.x;
-                y = other.y;
-            }
-
-            public MyIntVec2(float nx, float ny)
-            {
-                x = (int)nx;
-                y = (int)ny;
-            }
-
-            public MyIntVec2(int nx, int ny)
-            {
-                x = nx;
-                y = ny;
-            }
-
-            public MyIntVec2(int val)
-            {
-                x = y = val;
-            }
-
-        }
+        
     }
 
-   
-    
+    [Serializable]
+    public struct MyIntVec2
+    {
+        public int x;
+        public int y;
+
+        public int Max => x > y ? x : y;
+
+        public override string ToString() => "x:" + x + " y:" + y;
+
+        public void Clamp(int min, int max)
+        {
+            x = Mathf.Clamp(x, min, max);
+            y = Mathf.Clamp(y, min, max);
+        }
+
+        public void Clamp(int min, MyIntVec2 max)
+        {
+            x = Mathf.Clamp(x, min, max.x);
+            y = Mathf.Clamp(y, min, max.y);
+        }
+
+        public MyIntVec2 MultiplyBy(int val)
+        {
+            x *= val;
+            y *= val;
+            return this;
+        }
+
+        public MyIntVec2 Subtract(MyIntVec2 other)
+        {
+            x -= other.x;
+            y -= other.y;
+            return this;
+        }
+
+        public Vector2 ToFloat() => new Vector2(x, y);
+
+        public MyIntVec2 From(Vector2 vec)
+        {
+            x = (int)vec.x;
+            y = (int)vec.y;
+            return this;
+        }
+
+        public MyIntVec2(MyIntVec2 other)
+        {
+            x = other.x;
+            y = other.y;
+        }
+
+        public MyIntVec2(float nx, float ny)
+        {
+            x = (int)nx;
+            y = (int)ny;
+        }
+
+        public MyIntVec2(int nx, int ny)
+        {
+            x = nx;
+            y = ny;
+        }
+
+        public MyIntVec2(int val)
+        {
+            x = y = val;
+        }
+
+    }
+
 }
 

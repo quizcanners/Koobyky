@@ -522,7 +522,40 @@ namespace QuizCannersUtilities {
 
             return l;
         }
-        
+
+        public static List<T> Decode_List_Derived<T>(this string data, out List<T> l, ref ListMetaData ld) where T : ICfg
+        {
+
+            if (ld == null)
+                ld = new ListMetaData();
+            l = new List<T>();
+
+            var tps = typeof(T).TryGetDerivedClasses();
+
+            var overCody = new CfgDecoder(data);
+            foreach (var tag in overCody)
+            {
+
+                switch (tag)
+                {
+
+                    case CfgEncoder.ListMetaTag: ld.Decode(overCody.GetData()); break;
+
+                    case CfgEncoder.ListTag:
+                        var cody = new CfgDecoder(overCody.GetData());
+                        if (tps != null)
+                            foreach (var t in cody)
+                                l.Add(cody.DecodeData<T>(tps, ld));
+                        break;
+
+                    default: l.Add(overCody.DecodeData<T>(tps, ld)); break;
+                }
+            }
+
+            return l;
+        }
+
+
         public static List<T> Decode_List<T>(this string data, out List<T> l) where T : ICfg, new() {
 
             var cody = new CfgDecoder(data);
@@ -612,13 +645,12 @@ namespace QuizCannersUtilities {
 
         #region Abstract 
 
-        public static List<T> Decode_List_Abstract<T>(this string data, out List<T> l, TaggedTypesCfg taggedTypes) where T : IGotClassTag
+      /*  public static List<T> Decode_List_Abstract<T>(this string data, out List<T> l, TaggedTypesCfg taggedTypes) where T : IGotClassTag
         {
 
             l = new List<T>();
-
-
-#if UNITY_EDITOR
+            
+            #if UNITY_EDITOR
 
             var ct = taggedTypes.CoreType;
             var lt = typeof(T);
@@ -626,7 +658,7 @@ namespace QuizCannersUtilities {
                 Debug.LogError("Type of {0} is not a subclass of {1}".F(lt.ToPegiStringType(), ct.ToPegiStringType()));
                 return l;
             }
-#endif
+            #endif
 
             var cody = new CfgDecoder(data);
             
@@ -638,7 +670,7 @@ namespace QuizCannersUtilities {
             }
 
             return l;
-        }
+        }*/
 
         public static List<T> Decode_List<T>(this string data, out List<T> l, TaggedTypesCfg tps) where T : IGotClassTag {
             var cody = new CfgDecoder(data);
@@ -698,10 +730,11 @@ namespace QuizCannersUtilities {
         }
         #endregion
 
-        #region STD class
-        public static ICfg DecodeTagsFor<T>(this string data, T val) where T : ICfg
-        => (QcUnity.IsNullOrDestroyed_Obj(val)) ? val : new CfgDecoder(data).DecodeTagsFor(val);
-      
+        #region CFG class
+
+        public static ICfg DecodeTagsFrom<T>(this T obj, string data) where T : class, ICfg
+            => (QcUnity.IsNullOrDestroyed_Obj(obj)) ? obj : new CfgDecoder(data).DecodeTagsFor(obj);
+        
         public static T DecodeInto<T>(this string data, out T val) where T : ICfg, new()
         {
             val = data.DecodeInto<T>();
@@ -764,8 +797,7 @@ namespace QuizCannersUtilities {
             
             return val;
         }
-        #endregion
-
+    
         public static void Decode<T>(this string data, out T val, TaggedTypesCfg typeList) where T : IGotClassTag
         {
 
@@ -778,6 +810,7 @@ namespace QuizCannersUtilities {
             if (type != null)
                 val = cody.GetData().DecodeInto_Type<T>(type);
         }
+        #endregion
 
 
         #region Into Unity Objects
@@ -934,7 +967,24 @@ namespace QuizCannersUtilities {
            
         }
 
-        public T DecodeTagsFor<T>(T std) where T : ICfg {
+        public void DecodeTagsFor<T>(ref T std) where T : struct, ICfg
+        {
+
+            var unrecognizedKeeper = (std as IKeepUnrecognizedCfg)?.UnrecognizedStd;
+
+            if (unrecognizedKeeper == null)
+                foreach (var tag in this)
+                    std.Decode(tag, GetData());
+            else
+                foreach (var tag in this)
+                {
+                    var d = GetData();
+                    if (!std.Decode(tag, d))
+                        unrecognizedKeeper.Add(tag, d);
+                }
+        }
+
+        public T DecodeTagsFor<T>(T std) where T : class, ICfg {
 
             var unrecognizedKeeper = (std as IKeepUnrecognizedCfg)?.UnrecognizedStd;
 

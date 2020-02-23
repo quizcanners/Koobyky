@@ -10,6 +10,8 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.IO;
 using System.Text;
+using PlayerAndEditorGUI;
+using Debug = UnityEngine.Debug;
 
 namespace QuizCannersUtilities {
 
@@ -25,71 +27,178 @@ namespace QuizCannersUtilities {
 
         #region Timer
 
-        private static readonly Stopwatch StopWatch = new Stopwatch();
+        public static string SecondsToReadableString(int seconds) => TicksToReadableString(seconds * TimeSpan.TicksPerSecond);
 
-        private static string _timerStartLabel;
+        public static string SecondsToReadableString(float seconds) => TicksToReadableString((long)seconds * TimeSpan.TicksPerSecond);
 
-        public static void TimerStart()
+        public static string SecondsToReadableString(long seconds) => TicksToReadableString(seconds * TimeSpan.TicksPerSecond);
+
+        public static string TicksToReadableString(long elapsed)
         {
-            _timerStartLabel = null;
-            StopWatch.Start();
+            
+            long absElapsed = Math.Abs(elapsed);
+
+            if (absElapsed < TimeSpan.TicksPerMillisecond)
+                return elapsed.ToString() +
+                            " ticks  ({0} ms)".F(((double)elapsed / TimeSpan.TicksPerMillisecond).ToString("0.00")); 
+            else if (absElapsed < TimeSpan.TicksPerSecond)
+                return (elapsed / TimeSpan.TicksPerMillisecond).ToString() +
+                            " miliseconds  ({0} s)".F(((double)elapsed / TimeSpan.TicksPerSecond).ToString("0.00")); 
+            else if (absElapsed < TimeSpan.TicksPerMinute)
+                return elapsed / TimeSpan.TicksPerSecond +
+                            " seconds  ({0} min)".F(((double)elapsed / TimeSpan.TicksPerMinute).ToString("0.00")); 
+            else if (absElapsed < TimeSpan.TicksPerHour)
+                return elapsed / TimeSpan.TicksPerMinute +
+                       " minutes  ({0} hours)".F(((double)elapsed / TimeSpan.TicksPerHour).ToString("0.00")); 
+            else //if (elapsed < TimeSpan.TicksPerDay)
+                return elapsed / TimeSpan.TicksPerHour +
+                       " hours  ({0} days)".F(((double)elapsed / TimeSpan.TicksPerDay).ToString("0.00")); 
+
         }
 
-        public static void TimerStart(this string label)
-        {
-            _timerStartLabel = label;
-            StopWatch.Start();
-        }
+        public static Timer timer = new Timer();
 
-        public static string TimerEnd() => TimerEnd(null);
+        public class Timer : IDisposable {
 
-        public static string TimerEnd(this string label) => label.TimerEnd(true);
+            private readonly Stopwatch StopWatch = new Stopwatch();
 
-        public static string TimerEnd(this string label, bool logIt) => TimerEnd(label, logIt, false);
+            private string _timerStartLabel;
 
-        public static string TimerEnd(this string label, float threshold) => TimerEnd(label, true, false, threshold);
+            public Timer Start()
+            {
+                _timerStartLabel = null;
 
-        public static string TimerEnd(this string label, bool logInEditor, bool logInPlayer) => TimerEnd(label, logInEditor, logInPlayer, 0);
+                StopWatch.Restart();
 
-        public static string TimerEnd(this string label, bool logInEditor, bool logInPlayer, float logThreshold)
-        {
-            StopWatch.Stop();
+                return this;
+            }
 
-            float seconds = StopWatch.ElapsedTicks / TimeSpan.TicksPerSecond;
+            public Timer Start(string label)
+            {
+                _timerStartLabel = label;
+                StopWatch.Restart();
 
-            string timeText = seconds.RoundTo(seconds > 10 ? 1 :(seconds > 2 ? 1 : (seconds > 1 ? 2 : 4))).ToString() + " s";
 
-            var text = "";
-            if (_timerStartLabel != null)
-                text += _timerStartLabel + "->";
-            text += label + (label.IsNullOrEmpty() ? "" : ": ") + timeText;
+                return this;
+            }
 
-            _timerStartLabel = null;
+            public float GetMiliseconds() => StopWatch.ElapsedMilliseconds;
 
-            if (seconds > logThreshold && ((Application.isEditor && logInEditor) || (!Application.isEditor && logInPlayer)))
-                UnityEngine.Debug.Log(text);
+            public float GetSeconds() => StopWatch.ElapsedMilliseconds / 1000f;
 
-            StopWatch.Reset();
+            public override string ToString()
+            {
+                var text = (_timerStartLabel != null) ? (_timerStartLabel + "->") : "";
 
-            return text;
-        }
+                text += TicksToReadableString(StopWatch.ElapsedTicks);
 
-        public static string TimerEnd_Restart() => TimerEnd_Restart(null);
-        
-        public static string TimerEnd_Restart(this string labelForEndedSection) => labelForEndedSection.TimerEnd_Restart(true);
+                _timerStartLabel = null;
 
-        public static string TimerEnd_Restart(this string labelForEndedSection, bool logIt) => labelForEndedSection.TimerEnd_Restart(logIt, logIt, 0);
+                return text;
+            }
 
-        public static string TimerEnd_Restart(this string labelForEndedSection, bool logIt, int logThreshold) => labelForEndedSection.TimerEnd_Restart(logIt, logIt, logThreshold);
 
-        public static string TimerEnd_Restart(this string labelForEndedSection, bool logInEditor, bool logInPlayer) => labelForEndedSection.TimerEnd_Restart(logInEditor, logInPlayer, 0);
+            public string End() => End(null, false);
 
-        public static string TimerEnd_Restart(this string labelForEndedSection, bool logInEditor, bool logInPlayer, int logThreshold)
-        {
-            StopWatch.Stop();
-            var txt = TimerEnd(labelForEndedSection, logInEditor, logInPlayer, logThreshold);
-            StopWatch.Start();
-            return txt;
+            public string End(string label, bool logIt = true) => End(label, logIt, false);
+
+            public string End(string label, float threshold) => End(label, true, false, threshold);
+
+            public string End(string label, bool logInEditor, bool logInPlayer) =>
+                End(label, logInEditor, logInPlayer, 0);
+
+            public string End(string label, bool logInEditor, bool logInPlayer, float logThreshold)
+            {
+                StopWatch.Stop();
+
+                var text = label + (label.IsNullOrEmpty() ? "" : ": ") + ToString();
+                
+                if ((logThreshold == 0 || ((StopWatch.ElapsedTicks / TimeSpan.TicksPerSecond) > logThreshold)) &&
+                    ((Application.isEditor && logInEditor) || (!Application.isEditor && logInPlayer)))
+                    Debug.Log(text);
+
+                StopWatch.Reset();
+
+                return text;
+            }
+
+            public string End_Restart(string labelForEndedSection = null) =>
+                End_Restart(labelForEndedSection, true);
+
+            public string End_Restart(string labelForEndedSection, bool logIt) =>
+                End_Restart(labelForEndedSection, logIt, logIt, 0);
+
+            public string End_Restart(string labelForEndedSection, bool logIt, int logThreshold) =>
+                End_Restart(labelForEndedSection, logIt, logIt, logThreshold);
+
+            public string End_Restart(string labelForEndedSection, bool logInEditor, bool logInPlayer) =>
+                End_Restart(labelForEndedSection, logInEditor, logInPlayer, 0);
+
+            public string End_Restart(string labelForEndedSection, bool logInEditor, bool logInPlayer,
+                int logThreshold) {
+                StopWatch.Stop();
+                var txt = End(labelForEndedSection, logInEditor, logInPlayer, logThreshold);
+                StopWatch.Start();
+                return txt;
+            }
+            
+            private string _timingKey = "?";
+            private Dictionary<string, string> _timingLogDictionary;
+
+            private Dictionary<string, string> TimingDictionary
+            {
+                get
+                {
+                    if (_timingLogDictionary == null)
+                        _timingLogDictionary = new Dictionary<string, string>();
+
+                    return _timingLogDictionary;
+                }
+            }
+
+            public Timer Start_Dictionary(string keyForNextMeasurment) {
+                NextDictionaryMeasurment(keyForNextMeasurment);
+                Start();
+
+                return this;
+            }
+
+            public Timer Start_Dictionary(Dictionary<string, string> logDictionary,
+                string keyForNextMeasurment)
+            {
+                _timingLogDictionary = logDictionary;
+                NextDictionaryMeasurment(keyForNextMeasurment);
+                Start();
+
+                return this;
+            }
+
+            public void End_Restart_Dictionary(string keyForNextMeasurment) {
+                TimingDictionary[_timingKey] = End_Restart(null, false);
+                NextDictionaryMeasurment(keyForNextMeasurment);
+            }
+
+            private void NextDictionaryMeasurment(string key)
+            {
+                _timingKey = key;
+                TimingDictionary[_timingKey] = "...";
+            }
+
+            public Dictionary<string,string> End_Dictionary()
+            {
+                TimingDictionary[_timingKey] = End(null, false);
+                var ret = _timingLogDictionary;
+                _timingLogDictionary = null;
+                return ret;
+            }
+
+            public void Dispose() {
+                if (_timingLogDictionary!= null)
+                    End_Dictionary();
+                else
+                    End();
+            }
+
         }
 
         #endregion
@@ -147,6 +256,18 @@ namespace QuizCannersUtilities {
         }
 
         #region List Management
+
+        public static List<T> TryAdd<T>(this List<T> list, object ass, bool onlyIfNew = true)
+        {
+
+            T toAdd;
+
+            if (list.CanAdd(ref ass, out toAdd, onlyIfNew))
+                list.Add(toAdd);
+
+            return list;
+
+        }
 
         public static List<string> TryAddIfNewAndNotAmpty(this List<string> lst, string text) {
             if (!text.IsNullOrEmpty() && (lst.IndexOf(text) == -1))
@@ -279,9 +400,7 @@ namespace QuizCannersUtilities {
             ind = list.Count - 1;
             return ind;
         }
-
-
-
+        
         public static bool IsNew(this Type t) => t.IsValueType || (!t.IsUnityObject() && !t.IsAbstract && t.GetConstructor(Type.EmptyTypes) != null);
 
         public static void Move<T>(this List<T> list, int oldIndex, int newIndex) {
@@ -333,7 +452,7 @@ namespace QuizCannersUtilities {
             return last;
         }
 
-        public static T Last<T>(this List<T> list) => list.Count > 0 ? list[list.Count - 1] : default(T);
+        public static T Last<T>(this ICollection<T> list) => list.Count > 0 ? list.ElementAt(list.Count - 1) : default(T);
 
         public static void Swap<T>(this List<T> list, int indexOfFirst)
         {
@@ -349,7 +468,9 @@ namespace QuizCannersUtilities {
             list[indexB] = tmp;
         }
 
-        public static bool IsNullOrEmpty(this IList list) => list == null || list.Count == 0;
+        public static bool IsNullOrEmpty<T>(this ICollection<T> list) => list == null || list.Count == 0;
+
+        public static bool IsNullOrEmptyCollection(this ICollection list) => list == null || list.Count == 0;
 
         public static List<T> NullIfEmpty<T>(this List<T> list) => (list == null || list.Count == 0) ? null : list;
 
@@ -532,12 +653,33 @@ namespace QuizCannersUtilities {
 
         #region String Editing
 
+        public static bool ContainsAtLeast(this string text, char symbols = '\n', int occurances = 1) {
+
+            if (text.IsNullOrEmpty())
+                return false;
+
+            foreach (var c in text) {
+                if (c == symbols) {
+                    occurances--;
+                    if (occurances <= 0)
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
         public static string FirstLine(this string str) => new StringReader(str).ReadLine();
 
         public static string ToPegiStringType(this Type type) => type.ToString().SimplifyTypeName();
 
         public static string SimplifyTypeName(this string name)
         {
+            if (name == null)
+                return "TYPE IS A NULL STRING";
+            else if (name.Length == 0)
+                return "TYPE IS EMPTY STRING";
+
             var ind = Mathf.Max(name.LastIndexOf(".", StringComparison.Ordinal), name.LastIndexOf("+", StringComparison.Ordinal));
             return (ind == -1 || ind > name.Length - 5) ? name : name.Substring(ind + 1);
         }
@@ -719,17 +861,7 @@ namespace QuizCannersUtilities {
 
             return false;
         }
-
-        public static T GetInstanceOf<T>(this IList list) {
-
-            foreach (var i in list) {
-                if (i.GetType() == typeof(T))
-                    return (T)i;
-            }
-
-            return default(T);
-        }
-
+        
         public static List<List<Type>> GetAllChildTypesOf(List<Type> baseTypes)
         {
             var types = new List<List<Type>>();
@@ -751,9 +883,10 @@ namespace QuizCannersUtilities {
         }
         #endregion
 
+      
     }
     
-    public class LoopLock
+    public class LoopLock : IEnumerator
     {
         private volatile bool _lLock;
 
@@ -768,7 +901,9 @@ namespace QuizCannersUtilities {
         }
 
         public bool Unlocked => !_lLock;
-        
+
+        public object Current => _lLock;
+
         public void Run(Action action)
         {
             if (!Unlocked) return;
@@ -801,6 +936,57 @@ namespace QuizCannersUtilities {
             UnityEngine.Debug.LogError(msg);
             _loopErrorLogged = true;
         }
+
+        public bool MoveNext() => _lLock;
+
+        public void Reset() { }
+    }
+
+    [Serializable]
+    public class BoolDefine : IPEGI {
+
+        [SerializeField] private sbyte val;
+
+        public bool IsTrue => val == 1;
+      
+        public bool IsFalse => val == -1;
+
+        public void Set(bool value) => val = (sbyte)(value ? 1 : -1);
+        
+        public bool IsDefined {
+            get { return val != 0; }
+            set {
+                if (value) 
+                    Debug.LogError("Can only define bool by providing a value");
+                else val = 0;
+            }
+        }
+
+        #region Inspector
+
+        public bool Inspect() {
+
+            var changed = false;
+
+            if (IsDefined) {
+                var value = IsTrue;
+                if (pegi.toggleIcon(ref value).changes(ref changed))
+                    Set(value);
+                if (icon.Clear.Click("Make value Undefined"))
+                    IsDefined = false;
+            }
+            else {
+                if (icon.Done.Click("Set Undefined Boolean to True"))
+                    Set(true);
+                if (icon.Close.Click("Seto Undefined Boolean to false"))
+                    Set(false);
+            }
+
+
+            return changed;
+        }
+
+        #endregion
 
     }
 }

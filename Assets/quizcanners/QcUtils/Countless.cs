@@ -12,11 +12,6 @@ namespace QuizCannersUtilities {
 #pragma warning disable IDE0019 // Use pattern matching
 #pragma warning disable IDE0018 // Inline variable declaration
 
-
-    public interface ICountlessIndex
-    {
-        int CountlessIndex { get; set; }
-    }
     
     public abstract class CountlessBase : IPEGI, IGotCount {
         private static VariableBranch[] _branchPool = new VariableBranch[32];
@@ -43,15 +38,13 @@ namespace QuizCannersUtilities {
         protected static void DiscardBranch(VariableBranch b, int no)
         {
             if ((_brPoolMax + 1) >= _branchPool.Length)
-            {
                 _branchPool = _branchPool.ExpandBy(32);
-            }
-            //Debug.Log("Deleting branch ");
+            
             _branchPool[_brPoolMax] = b.br[no];
             VariableBranch vb = _branchPool[_brPoolMax];
             if (vb.value != 0)
-                Debug.Log("Value is " + vb.value + " on delete ");
-            //vb.value = 0;
+                Debug.LogError("Value is " + vb.value + " on delete ");
+
             b.value--;
             b.br[no] = null;
             _brPoolMax++;
@@ -60,7 +53,6 @@ namespace QuizCannersUtilities {
         {
             while ((br.value < 2) && (br.br[0] != null) && (depth > 0))
             {
-                // if (br.value < 1) Debug.Log("Reducing depth on branch with " + br.value);
                 _branchPool[_brPoolMax] = br;
                 _brPoolMax++;
                 var tmp = br.br[0];
@@ -69,8 +61,6 @@ namespace QuizCannersUtilities {
                 br = tmp;
                 depth--;
                 max /= BranchSize;
-
-                // Debug.Log("Reducing depth to " + depth + " new Range: " + Max);
             }
         }
 
@@ -101,12 +91,12 @@ namespace QuizCannersUtilities {
             {
                 var vb = new VariableBranch() {
                     br = new VariableBranch[BranchSize]
-            };
-                //Debug.Log("Creating new branch ");
+                };
+
                 return vb;
             }
+
             _brPoolMax--;
-            //Debug.Log("Returning existing branch");
             return _branchPool[_brPoolMax];
         }
      
@@ -117,12 +107,12 @@ namespace QuizCannersUtilities {
             if (_frPoolMax == 0)
             {
                 var vb = new VariableBranch();
-                //   Debug.Log("Creating new fruit ");
+
                 return vb;
             }
             _frPoolMax--;
             count++;
-            // Debug.Log("Returning existing fruit");
+
             return _fruitPool[_frPoolMax];
         }
 
@@ -146,9 +136,7 @@ namespace QuizCannersUtilities {
         public int CountForInspector() => count;
 
         public virtual bool IsDefault => count == 0;
-
-
-#if !NO_PEGI
+        
         public virtual bool Inspect()
         {
             ("Depth: " + depth).nl();
@@ -156,7 +144,6 @@ namespace QuizCannersUtilities {
 
             return false;
         }
-#endif
         #endregion
 
 
@@ -164,8 +151,7 @@ namespace QuizCannersUtilities {
             max = BranchSize;
             br = GetNewBranch();
         }
-
-      //  public delegate void VariableTreeFunk(ref int dst, int ind, int val);
+        
     }
 
 
@@ -173,7 +159,6 @@ namespace QuizCannersUtilities {
     {
         public override bool IsDefault { get {
                 var def = (br == null || br.value == 0);
-              //  if (def) Debug.Log("Found default Countless");
                 return def;
 
             }
@@ -186,7 +171,7 @@ namespace QuizCannersUtilities {
         public void Decode(string data)
         {
             Clear();
-            data.DecodeTagsFor(this);
+            this.DecodeTagsFrom(data);
         }
     }
 
@@ -436,9 +421,7 @@ namespace QuizCannersUtilities {
 
     public class CountlessBool : CfgCountlessBase
     {
-
- 
-
+        
         #region Encode & Decode
         public override bool Decode(string tg, string data)
         {
@@ -705,16 +688,7 @@ public class Countless<T> : CountlessBase {
         public T this[int index]
         {
             get { return Get(index); }
-            set {
-#if !NO_PEGI
-                var igi = value as IGotIndex;
-                if (igi != null && igi.IndexForPEGI != index)
-                {
-                    Debug.Log("setting "+value.ToString() + " with ind " + igi.IndexForPEGI + " at "+index);
-                 //   igi.index = index;
-                }
-#endif
-                Set(index, value); }
+            set { Set(index, value); }
         }
         
         protected virtual void Set(int ind, T obj)
@@ -904,7 +878,6 @@ public class Countless<T> : CountlessBase {
 
 
         #region Inspector
-#if !NO_PEGI
         public T this[IGotIndex i]
         {
             get { return Get(i.IndexForPEGI); }
@@ -930,8 +903,8 @@ public class Countless<T> : CountlessBase {
 
                     if (icon.Delete.Click())
                         this[ind] = default(T);
-                    else
-                        pegi.InspectValueInList<T>(el, null, ind, ref _edited);
+                    else if (pegi.InspectValueInCollection(ref el, null, ind, ref _edited) && typeof(T).IsValueType)
+                        this[ind] = el;
                 }
 
             }
@@ -948,9 +921,7 @@ public class Countless<T> : CountlessBase {
             }
             return changed;
         }
-
-     
-#endif
+        
         #endregion
     }
 
@@ -1259,7 +1230,6 @@ public class Countless<T> : CountlessBase {
     {
 
         #region Inspector
-        #if !NO_PEGI
         public static bool Inspect<TG, T>(TG countless, ref int inspected) where TG : CountlessCfg<T> where T: ICfg, IPEGI, new() {
 
             var changed = false;
@@ -1276,18 +1246,29 @@ public class Countless<T> : CountlessBase {
             var deleted = -1;
 
             if (inspected == -1)
-                foreach (var e in countless) {
-                    if (icon.Delete.Click()) deleted = countless.currentEnumerationIndex;
-                    "{0}: ".F(countless.currentEnumerationIndex).write(35);
-                    pegi.InspectValueInList<T>(e, null, countless.currentEnumerationIndex, ref inspected).nl(ref changed);
+            {
+                List<int> indexes;
+                var all = countless.GetAllObjs(out indexes);
+                for (int i = 0; i < all.Count; i++)
+                {
+                    var el = all[i];
+                    var ind = indexes[i];
+                    if (icon.Delete.Click())
+                        countless[ind] = default(T);
+
+                    "{0}: ".F(ind).write(35);
+                    if (pegi.InspectValueInCollection(ref el, null, ind, ref inspected).nl(ref changed) && typeof(T).IsValueType)
+                        countless[indexes[i]] = el;
                 }
+            }
+
             if (deleted != -1)
                 countless[deleted] = default(T);
             
-            pegi.newLine();
+            pegi.nl();
             return changed;
         }
-#endif
+
         #endregion
 
         #region Encode & Decode
@@ -1311,6 +1292,15 @@ public class Countless<T> : CountlessBase {
             var cody = new CfgDecoder(data);
             foreach (var tag in cody)
                 c[tag.ToInt()] = cody.GetData().ToColor();
+
+        }
+
+        public static void DecodeInto(this string data, out Countless<string> c)
+        {
+            c = new Countless<string>();
+            var cody = new CfgDecoder(data);
+            foreach (var tag in cody)
+                c[tag.ToInt()] = cody.GetData();
 
         }
 

@@ -12,9 +12,6 @@ public class CameraScaler : MonoBehaviour {
     public float orthogonalHeight = 7;
 
     public Camera RenderTexCamera;
-    public Color col;
-    Color tmpCol = new Color();
-    public Material outline;
 
     private void Awake() {
         inst = this;
@@ -30,9 +27,7 @@ public class CameraScaler : MonoBehaviour {
         float target = orthogonalWidth / orthogonalHeight;
 
         c.orthographicSize = Mathf.Lerp(c.orthographicSize, Mathf.Max(orthogonalHeight, orthogonalWidth * (target / proportion)), Time.deltaTime);
-        tmpCol = Color.Lerp(tmpCol, col, Time.deltaTime*8);
-        Shader.SetGlobalColor("_OutlineColor", tmpCol);
-
+      
         delay -= Time.deltaTime;
         if (delay < 0) { RenderTexCamera.Render(); delay = 0.01f; }
        // outline.SetColor("_Color", tmpCol);

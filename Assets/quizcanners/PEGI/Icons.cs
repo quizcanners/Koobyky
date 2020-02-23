@@ -2,7 +2,7 @@
 using UnityEngine;
 using System;
 using QuizCannersUtilities;
-using static QuizCannersUtilities.QcMath;
+
 
 namespace PlayerAndEditorGUI {
 
@@ -115,7 +115,7 @@ namespace PlayerAndEditorGUI {
  
     }
     
-    public static partial class LazyTranslations {
+    public static partial class LazyLocalization {
 
         static TranslationsEnum iconTranslations = new TranslationsEnum();
 
@@ -221,13 +221,11 @@ namespace PlayerAndEditorGUI {
             org[eng] = new LazyTranslation(english, englishDetails);
             return org;
         }
-
-        #if !NO_PEGI
+        
         public static string F(this icon msg, Msg other) =>  "{0} {1}".F(msg.GetText(), other.GetText());
 
         public static string F(this Msg msg, icon other) => "{0} {1}".F(msg.GetText(), other.GetText());
-        #endif
-
+     
     }
 
 

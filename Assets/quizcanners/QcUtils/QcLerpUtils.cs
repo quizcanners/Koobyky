@@ -48,7 +48,6 @@ namespace QuizCannersUtilities
             set { dominantParameter = value; }
         }
 
-        #if !NO_PEGI
 
         public int CountForInspector() => _resets;
         
@@ -78,7 +77,6 @@ namespace QuizCannersUtilities
 
             return false;
         }
-#endif
 
         #endregion
     }
@@ -199,7 +197,7 @@ namespace QuizCannersUtilities
                 defaultSet = true;
             }
 
-            public abstract bool LerpInternal(float linkedPortion);
+            protected abstract bool LerpInternal(float linkedPortion);
 
             public virtual void Portion(LerpData ld)
             {
@@ -218,11 +216,10 @@ namespace QuizCannersUtilities
                 }
             }
 
-            public abstract bool Portion(ref float linkedPortion);
+            protected abstract bool Portion(ref float linkedPortion);
 
             #region Inspector
-
-#if !NO_PEGI
+            
             public virtual bool InspectInList(IList list, int ind, ref int edited)
             {
 
@@ -289,7 +286,6 @@ namespace QuizCannersUtilities
 
                 return changed;
             }
-#endif
 
             #endregion
 
@@ -298,7 +294,7 @@ namespace QuizCannersUtilities
         public abstract class BaseLerpGeneric<T> : BaseLerp
         {
 
-            protected abstract T TargetValue { get; set; }
+            public abstract T TargetValue { get; set; }
             public abstract T CurrentValue { get; set; }
 
             public T TargetAndCurrentValue
@@ -310,13 +306,17 @@ namespace QuizCannersUtilities
                 }
             }
 
+            public virtual void Portion(LerpData ld, T targetValue) {
+                TargetValue = targetValue;
+                Portion(ld);
+            }
         }
 
         public abstract class BaseVector2Lerp : BaseLerpGeneric<Vector2>
         {
             public Vector2 targetValue;
             
-            protected override Vector2 TargetValue
+            public override Vector2 TargetValue
             {
                 get { return targetValue; }
                 set { targetValue = value; }
@@ -328,7 +328,7 @@ namespace QuizCannersUtilities
 
             public override bool UsingLinkedThreshold => base.UsingLinkedThreshold && Enabled;
 
-            public override bool LerpInternal(float linkedPortion)
+            protected override bool LerpInternal(float linkedPortion)
             {
                 if (CurrentValue != targetValue || !defaultSet)
                     CurrentValue = Vector2.Lerp(CurrentValue, targetValue, linkedPortion);
@@ -337,7 +337,7 @@ namespace QuizCannersUtilities
                 return true;
             }
 
-            public override bool Portion(ref float linkedPortion)
+            protected override bool Portion(ref float linkedPortion)
             {
 
                 var magnitude = (CurrentValue - targetValue).magnitude;
@@ -354,8 +354,6 @@ namespace QuizCannersUtilities
             }
 
             #region Inspector
-
-#if !NO_PEGI
 
             public override bool InspectInList(IList list, int ind, ref int edited)
             {
@@ -383,7 +381,6 @@ namespace QuizCannersUtilities
 
                 return changed;
             }
-#endif
 
             #endregion
 
@@ -422,9 +419,9 @@ namespace QuizCannersUtilities
 
         public abstract class BaseQuaternionLerp : BaseLerpGeneric<Quaternion>
         {
-            public Quaternion targetValue;
+            protected Quaternion targetValue;
 
-            protected override Quaternion TargetValue
+            public override Quaternion TargetValue
             {
                 get { return targetValue; }
                 set { targetValue = value; }
@@ -432,7 +429,7 @@ namespace QuizCannersUtilities
 
             public override bool UsingLinkedThreshold => base.UsingLinkedThreshold && Enabled;
 
-            public override bool LerpInternal(float linkedPortion)
+            protected override bool LerpInternal(float linkedPortion)
             {
                 if (CurrentValue != targetValue || !defaultSet)
                     CurrentValue = Quaternion.Lerp(CurrentValue, targetValue, linkedPortion);
@@ -441,7 +438,7 @@ namespace QuizCannersUtilities
                 return true;
             }
 
-            public override bool Portion(ref float linkedPortion)
+            protected override bool Portion(ref float linkedPortion)
             {
 
                 var magnitude = Quaternion.Angle(CurrentValue, targetValue);
@@ -450,8 +447,6 @@ namespace QuizCannersUtilities
             }
 
             #region Inspector
-
-#if !NO_PEGI
 
             public override bool InspectInList(IList list, int ind, ref int edited)
             {
@@ -479,7 +474,6 @@ namespace QuizCannersUtilities
 
                 return changed;
             }
-#endif
 
             #endregion
 
@@ -520,7 +514,7 @@ namespace QuizCannersUtilities
 
             protected virtual bool CanLerp => true;
 
-            public override bool LerpInternal(float linkedPortion)
+            protected override bool LerpInternal(float linkedPortion)
             {
                 if (CanLerp && (!defaultSet || CurrentValue != TargetValue))
                     CurrentValue = Mathf.Lerp(CurrentValue, TargetValue, linkedPortion);
@@ -529,12 +523,11 @@ namespace QuizCannersUtilities
                 return true;
             }
 
-            public override bool Portion(ref float linkedPortion) =>
+            protected override bool Portion(ref float linkedPortion) =>
                 speedLimit.SpeedToMinPortion(CurrentValue - TargetValue, ref linkedPortion);
 
             #region Inspect
-
-#if !NO_PEGI
+            
             public override bool Inspect()
             {
                 var ret = base.Inspect();
@@ -542,7 +535,6 @@ namespace QuizCannersUtilities
                     "{0} => {1}".F(CurrentValue, TargetValue).nl();
                 return ret;
             }
-#endif
 
             #endregion
 
@@ -584,7 +576,7 @@ namespace QuizCannersUtilities
 
             private OnStart _onStart = OnStart.Nothing;
 
-            protected override float TargetValue
+            public override float TargetValue
             {
                 get { return Mathf.Max(0, _targetTextures.Count - 1); }
                 set { }
@@ -686,14 +678,19 @@ namespace QuizCannersUtilities
 
             protected BaseMaterialTextureTransition()
             {
-                transitionProperty = CustomShaderParameters.TransitionPortion;
-                currentTexturePrTextureValue = CustomShaderParameters.CurrentTexture;
-                nextTexturePrTextureValue = CustomShaderParameters.NextTexture;
+                transitionProperty = TransitionPortion;
+                currentTexturePrTextureValue = CurrentTexture;
+                nextTexturePrTextureValue = NextTexture;
             }
+
+            static readonly ShaderProperty.VectorValue ImageProjectionPosition = new ShaderProperty.VectorValue("_imgProjPos");
+            static readonly ShaderProperty.TextureValue NextTexture = new ShaderProperty.TextureValue("_Next_MainTex");
+            static readonly ShaderProperty.TextureValue CurrentTexture = new ShaderProperty.TextureValue("_MainTex_Current");
+            static readonly ShaderProperty.FloatValue TransitionPortion = new ShaderProperty.FloatValue("_Transition");
+
 
             #region Inspector
 
-#if !NO_PEGI
             public override bool Inspect()
             {
                 var changed = base.Inspect();
@@ -712,7 +709,6 @@ namespace QuizCannersUtilities
 
                 return changed;
             }
-#endif
 
             #endregion
 
@@ -841,7 +837,7 @@ namespace QuizCannersUtilities
 
         }
 
-        public abstract class BaseShaderLerp : BaseLerp, IGotDisplayName
+        public abstract class BaseShaderLerp<T> : BaseLerpGeneric<T>, IGotDisplayName
         {
 
             public Material material;
@@ -861,7 +857,7 @@ namespace QuizCannersUtilities
                 }
             }
 
-            public sealed override bool LerpInternal(float linkedPortion)
+            protected sealed override bool LerpInternal(float linkedPortion)
             {
                 if (LerpSubInternal(linkedPortion))
                     Set();
@@ -912,16 +908,16 @@ namespace QuizCannersUtilities
 
             public Color targetValue = Color.white;
 
-            protected override Color TargetValue
+            public override Color TargetValue
             {
                 get { return targetValue; }
                 set { targetValue = value; }
             }
 
-            public override bool Portion(ref float linkedPortion) =>
+            protected override bool Portion(ref float linkedPortion) =>
                 speedLimit.SpeedToMinPortion(CurrentValue.DistanceRgba(targetValue), ref linkedPortion);
 
-            public sealed override bool LerpInternal(float linkedPortion)
+            protected sealed override bool LerpInternal(float linkedPortion)
             {
                 if (Enabled && (targetValue != CurrentValue || !defaultSet))
                     CurrentValue = Color.Lerp(CurrentValue, targetValue, linkedPortion);
@@ -955,8 +951,7 @@ namespace QuizCannersUtilities
             #endregion
 
             #region Inspector
-
-#if !NO_PEGI
+            
             public override bool Inspect()
             {
 
@@ -966,7 +961,6 @@ namespace QuizCannersUtilities
 
                 return changed;
             }
-#endif
 
             #endregion
         }
@@ -989,7 +983,7 @@ namespace QuizCannersUtilities
 
             public override float CurrentValue { get; set; }
 
-            protected override float TargetValue
+            public override float TargetValue
             {
                 get { return targetValue; }
                 set { targetValue = value; }
@@ -1003,15 +997,14 @@ namespace QuizCannersUtilities
                 get { return _name; }
                 set { }
             }
-
-#if !NO_PEGI
+            
             public override bool InspectInList(IList list, int ind, ref int edited)
             {
                 var changed = false;
 
                 if (allowChangeParameters)
                 {
-                    int width = _name.ApproximateLengthUnsafe();
+                    int width = pegi.ApproximateLength(_name);
                     if (minMax)
                         _name.edit(width, ref targetValue, min, max).changes(ref changed);
                     else
@@ -1026,7 +1019,7 @@ namespace QuizCannersUtilities
                 return changed;
             }
 
-#endif
+
             #endregion
 
             #region Encode & Decode
@@ -1061,23 +1054,8 @@ namespace QuizCannersUtilities
 
             #endregion
 
-            public FloatValue()
-            {
-            }
 
-            public FloatValue(string name)
-            {
-                _name = name;
-            }
-
-            public FloatValue(string name, float startValue)
-            {
-                _name = name;
-                targetValue = startValue;
-                CurrentValue = startValue;
-            }
-
-            public FloatValue(string name, float startValue, float lerpSpeed)
+            public FloatValue(float startValue = 1, float lerpSpeed = 1, string name = "Float Value")
             {
                 _name = name;
                 targetValue = startValue;
@@ -1085,7 +1063,7 @@ namespace QuizCannersUtilities
                 speedLimit = lerpSpeed;
             }
 
-            public FloatValue(string name, float startValue, float lerpSpeed, float min, float max)
+            public FloatValue(float startValue, float lerpSpeed, float min, float max, string name)
             {
                 _name = name;
                 targetValue = startValue;
@@ -1095,13 +1073,14 @@ namespace QuizCannersUtilities
                 this.min = min;
                 this.max = max;
             }
+
         }
 
         public class ColorValue : BaseColorLerp, IGotName
         {
-            private readonly string _name = "Float value";
+            protected readonly string _name = "Float value";
 
-            private Color currentValue;
+            protected Color currentValue;
 
             public override Color CurrentValue
             {
@@ -1126,6 +1105,24 @@ namespace QuizCannersUtilities
 
         }
 
+        public class ShaderColorValueGlobal : ColorValue {
+
+            protected ShaderProperty.ColorFloat4Value shaderValue; 
+            
+            public override Color CurrentValue
+            {
+                get { return currentValue; }
+                set { currentValue = value;
+                    shaderValue.GlobalValue = value;
+                }
+            }
+
+            public ShaderColorValueGlobal(string name) {
+                shaderValue = new ShaderProperty.ColorFloat4Value(name);
+            }
+
+        }
+        
         public class QuaternionValue : BaseQuaternionLerp
         {
 
@@ -1142,15 +1139,14 @@ namespace QuizCannersUtilities
             protected override string Name_Internal => _name;
 
             #region Inspect
-
-            #if !NO_PEGI
+            
             public override bool InspectInList(IList list, int ind, ref int edited)
             {
                 var changed = false;
 
                 if (allowChangeParameters)
                 {
-                    int width = Name_Internal.ApproximateLengthUnsafe();
+                    int width = pegi.ApproximateLength(Name_Internal);
                     Name_Internal.edit(width, ref targetValue).changes(ref changed);
                 }
 
@@ -1160,7 +1156,6 @@ namespace QuizCannersUtilities
                 return changed;
             }
 
-#endif
             #endregion
 
             #region Encode & Decode
@@ -1219,11 +1214,40 @@ namespace QuizCannersUtilities
 
         #region Transform
 
-        public class TransformLocalScale : TransformLocalPosition
+        public abstract class TransformVector3Base : BaseLerpGeneric<Vector3> {
+
+            public override bool Enabled => base.Enabled && transform;
+
+            public Transform transform;
+
+            public Vector3 targetValue;
+
+            public override Vector3 TargetValue { get { return targetValue; } set { targetValue = value; } }
+
+            public TransformVector3Base(Transform transform, float nspeed)
+            {
+                this.transform = transform;
+                speedLimit = nspeed;
+            }
+
+            protected override bool LerpInternal(float portion)
+            {
+                if (Enabled && CurrentValue != targetValue)
+                    CurrentValue = Vector3.Lerp(CurrentValue, targetValue, portion);
+                else return false;
+
+                return true;
+            }
+
+            protected override bool Portion(ref float portion) =>
+                speedLimit.SpeedToMinPortion((CurrentValue - targetValue).magnitude, ref portion);
+        }
+
+        public class TransformLocalScale : TransformVector3Base
         {
             protected override string Name_Internal => "Local Scale";
 
-            public override Vector3 Value
+            public override Vector3 CurrentValue
             {
                 get { return transform.localScale; }
                 set { transform.localScale = value; }
@@ -1234,52 +1258,31 @@ namespace QuizCannersUtilities
             }
         }
 
-        public class TransformPosition : TransformLocalPosition
+        public class TransformPosition : TransformVector3Base
         {
             protected override string Name_Internal => "Position";
 
-            public override Vector3 Value
+            public override Vector3 CurrentValue
             {
                 get { return transform.position; }
                 set { transform.position = value; }
             }
 
-            public TransformPosition(Transform transform, float nspeed) : base(transform, nspeed)
-            {
-            }
+            public TransformPosition(Transform transform, float nspeed) : base(transform, nspeed) { }
         }
 
-        public class TransformLocalPosition : BaseLerp
+        public class TransformLocalPosition : TransformVector3Base
         {
             protected override string Name_Internal => "Local Position";
-            public Transform transform;
-            public Vector3 targetValue;
-
-            public override bool Enabled => base.Enabled && transform;
-
-            public virtual Vector3 Value
+        
+            public override Vector3 CurrentValue
             {
                 get { return transform.localPosition; }
                 set { transform.localPosition = value; }
             }
 
-            public TransformLocalPosition(Transform transform, float nspeed)
-            {
-                this.transform = transform;
-                speedLimit = nspeed;
-            }
+            public TransformLocalPosition(Transform transform, float nspeed) : base(transform, nspeed) { }
 
-            public override bool LerpInternal(float portion)
-            {
-                if (Enabled && Value != targetValue)
-                    Value = Vector3.Lerp(Value, targetValue, portion);
-                else return false;
-
-                return true;
-            }
-
-            public override bool Portion(ref float portion) =>
-                speedLimit.SpeedToMinPortion((Value - targetValue).magnitude, ref portion);
 
         }
 
@@ -1349,30 +1352,34 @@ namespace QuizCannersUtilities
 
         #region Material
 
-        public class MaterialFloat : BaseShaderLerp
+        public class MaterialFloat : BaseShaderLerp<float>
         {
             private readonly ShaderProperty.FloatValue _property;
-            
-            public float Value
+
+            protected override string Name_Internal =>
+                _property != null ? _property.NameForDisplayPEGI() : "Material Float";
+
+            public override float TargetValue
             {
-                get { return _property.lastValue; }
-                set
-                {
-                    _property.lastValue = value;
+                get { return targetValue; }
+                set { targetValue = value; }
+            }
+
+            public override float CurrentValue { 
+                get {return _property.latestValue;}
+                set{_property.latestValue = value;
                     defaultSet = false;
                 }
             }
 
-            protected override string Name_Internal => _property != null ? _property.NameForDisplayPEGI(): "Material Float";
-
-            public float targetValue;
+            protected float targetValue;
 
             public override void Set(Material mat)
             {
                 if (mat)
                     mat.Set(_property);
                 else
-                    _property.GlobalValue = _property.lastValue;
+                    _property.GlobalValue = _property.latestValue;
             }
 
             public MaterialFloat(string nName, float startingValue, float startingSpeed = 1, Renderer renderer = null,
@@ -1380,17 +1387,17 @@ namespace QuizCannersUtilities
             {
                 _property = new ShaderProperty.FloatValue(nName);
                 targetValue = startingValue;
-                Value = startingValue;
+                CurrentValue = startingValue;
             }
 
-            public override bool Portion(ref float linkedPortion) =>
-                speedLimit.SpeedToMinPortion(Value - targetValue, ref linkedPortion);
+            protected override bool Portion(ref float linkedPortion) =>
+                speedLimit.SpeedToMinPortion(CurrentValue - targetValue, ref linkedPortion);
 
             protected override bool LerpSubInternal(float portion)
             {
-                if (Enabled && (Value != targetValue || !defaultSet))
+                if (Enabled && (CurrentValue != targetValue || !defaultSet))
                 {
-                    _property.lastValue = Mathf.Lerp(Value, targetValue, portion);
+                    _property.latestValue = Mathf.Lerp(CurrentValue, targetValue, portion);
                     return true;
                 }
 
@@ -1398,22 +1405,18 @@ namespace QuizCannersUtilities
             }
 
             #region Inspector
-
-#if !NO_PEGI
-
+            
             public override bool Inspect()
             {
                 var changed = base.Inspect();
 
                 "Target".edit(70, ref targetValue).nl(ref changed);
 
-                if ("Value".edit(ref _property.lastValue).nl(ref changed))
+                if ("Value".edit(ref _property.latestValue).nl(ref changed))
                     Set();
 
                 return changed;
             }
-
-#endif
 
             #endregion
 
@@ -1445,18 +1448,24 @@ namespace QuizCannersUtilities
             #endregion
         }
 
-        public class MaterialColor : BaseShaderLerp
+        public class MaterialColor : BaseShaderLerp<Color>
         {
-            private readonly ShaderProperty.ColorValue _property;
+            private readonly ShaderProperty.IndexGeneric<Color> _property;
 
             protected override string Name_Internal => _property != null ? _property.NameForDisplayPEGI(): "Material Float";
-            
-            public Color Value
+
+            public override Color TargetValue
             {
-                get { return _property.lastValue; }
+                get { return targetValue; }
+                set { targetValue = value; }
+            }
+
+            public override Color CurrentValue
+            {
+                get { return _property.latestValue; }
                 set
                 {
-                    _property.lastValue = value;
+                    _property.latestValue = value;
                     defaultSet = false;
                 }
             }
@@ -1468,31 +1477,37 @@ namespace QuizCannersUtilities
                 if (mat)
                     mat.Set(_property);
                 else
-                    _property.GlobalValue = Value;
+                    _property.GlobalValue = CurrentValue;
             }
 
             public MaterialColor(string nName, Color startingValue, float startingSpeed = 1, Material m = null,
                 Renderer renderer = null) : base(startingSpeed, m, renderer)
             {
-                _property = new ShaderProperty.ColorValue(nName);
-                Value = startingValue;
+                _property = new ShaderProperty.ColorFloat4Value(nName);
+                CurrentValue = startingValue;
+            }
+
+            public MaterialColor(string nName, Color startingValue, string shaderFeatureDirective, float startingSpeed = 1, Material m = null,
+                Renderer renderer = null) : base(startingSpeed, m, renderer)
+            {
+                _property = new ShaderProperty.ColorFeature(nName, shaderFeatureDirective);
+                CurrentValue = startingValue;
             }
 
             protected override bool LerpSubInternal(float portion)
             {
-                if (Value != targetValue || !defaultSet)
+                if (CurrentValue != targetValue || !defaultSet)
                 {
-                    _property.lastValue = Color.Lerp(Value, targetValue, portion);
+                    _property.latestValue = Color.Lerp(CurrentValue, targetValue, portion);
                     return true;
                 }
 
                 return false;
             }
 
-            public override bool Portion(ref float portion) =>
-                speedLimit.SpeedToMinPortion(Value.DistanceRgba(targetValue), ref portion);
-
-
+            protected override bool Portion(ref float portion) =>
+                speedLimit.SpeedToMinPortion(CurrentValue.DistanceRgba(targetValue), ref portion);
+            
             #region Encode & Decode
 
             public override CfgEncoder Encode()
@@ -1521,6 +1536,87 @@ namespace QuizCannersUtilities
             #endregion
 
         }
+
+        public class MaterialVector4 : BaseShaderLerp<Vector4>
+        {
+            private readonly ShaderProperty.IndexGeneric<Vector4> _property;
+
+            protected override string Name_Internal => _property != null ? _property.NameForDisplayPEGI() : "Material Float4";
+
+            public override Vector4 TargetValue
+            {
+                get { return targetValue; }
+                set { targetValue = value; }
+            }
+
+            public override Vector4 CurrentValue
+            {
+                get { return _property.latestValue; }
+                set
+                {
+                    _property.latestValue = value;
+                    defaultSet = false;
+                }
+            }
+
+            public Vector4 targetValue;
+
+            public override void Set(Material mat)
+            {
+                if (mat)
+                    mat.Set(_property);
+                else
+                    _property.GlobalValue = CurrentValue;
+            }
+
+            public MaterialVector4(string nName, Vector4 startingValue, float startingSpeed = 1, Material m = null,
+                Renderer renderer = null) : base(startingSpeed, m, renderer)
+            {
+                _property = new ShaderProperty.VectorValue(nName);
+                CurrentValue = startingValue;
+            }
+
+            protected override bool LerpSubInternal(float portion) {
+                if (CurrentValue != targetValue || !defaultSet) {
+                    _property.latestValue = Vector4.Lerp(CurrentValue, targetValue, portion);
+                    return true;
+                }
+
+                return false;
+            }
+
+            protected override bool Portion(ref float portion) =>
+                speedLimit.SpeedToMinPortion((CurrentValue - targetValue).magnitude, ref portion);
+
+            #region Encode & Decode
+
+            public override CfgEncoder Encode()
+            {
+
+                var cody = new CfgEncoder()
+                    .Add("b", base.Encode)
+                    .Add("v4", targetValue);
+
+                return cody;
+            }
+
+            public override bool Decode(string tg, string data)
+            {
+                switch (tg)
+                {
+                    case "b": data.Decode_Delegate(base.Decode); break;
+                    case "v4": targetValue = data.ToColor(); break;
+
+                    default: return false;
+                }
+
+                return true;
+            }
+
+            #endregion
+
+        }
+
 
         public class GraphicMaterialTextureTransition : BaseMaterialTextureTransition
         {
@@ -1627,10 +1723,10 @@ namespace QuizCannersUtilities
                 }
             }
 
-            public float targetValue;
+            protected float targetValue;
             public bool setZeroOnStart = true;
 
-            protected override float TargetValue
+            public override float TargetValue
             {
                 get { return targetValue; }
                 set { targetValue = value; }
@@ -1685,8 +1781,7 @@ namespace QuizCannersUtilities
             #endregion
 
             #region Inspect
-
-#if !NO_PEGI
+            
             public override bool Inspect()
             {
 
@@ -1696,7 +1791,6 @@ namespace QuizCannersUtilities
 
                 return changed;
             }
-#endif
 
             #endregion
 
@@ -1736,8 +1830,15 @@ namespace QuizCannersUtilities
 
         #region Lerps
 
-        public static float SpeedToPortion(this float speed, float dist) =>
+        
+
+        private static float SpeedToPortion(this float speed, float dist) =>
             dist != 0 ? Mathf.Clamp01(speed * Time.deltaTime / Mathf.Abs(dist)) : 1;
+
+
+        private static double SpeedToPortion(this double speed, double dist) =>
+            dist != 0 ? QcMath.Clamp01(speed * Time.deltaTime / Math.Abs(dist)) : 1;
+
 
         public static bool SpeedToMinPortion(this float speed, float dist, LerpData ld)
         {
@@ -1778,18 +1879,29 @@ namespace QuizCannersUtilities
             return true;
         }
 
-        public static bool LerpBySpeed(ref float from, float to, float speed, out float portion)
+        public static bool IsLerpingBySpeed(ref double from, double to, double speed)
         {
             if (from == to)
-            {
-                portion = 1;
                 return false;
-            }
 
-            portion = speed.SpeedToPortion(Mathf.Abs(from - to));
-            from = Mathf.LerpUnclamped(from, to, portion);
+            double diff = to - from;
 
+            double dist = Math.Abs(diff);
+
+            from += diff * QcMath.Clamp01(speed * Time.deltaTime / dist);
             return true;
+        }
+
+        public static double LerpBySpeed(double from, double to, double speed)
+        {
+            if (from == to)
+                return from;
+
+            double diff = to - from;
+
+            double dist = Math.Abs(diff);
+
+            return from + diff * QcMath.Clamp01(speed * Time.deltaTime / dist);
         }
 
         public static float LerpBySpeed(float from, float to, float speed)
@@ -1821,8 +1933,8 @@ namespace QuizCannersUtilities
 
         public static Vector2 LerpBySpeed(this Vector2 from, Vector2 to, float speed, out float portion)
         {
-            portion = speed.SpeedToPortion(Vector3.Distance(from, to));
-            return Vector3.LerpUnclamped(from, to, portion);
+            portion = speed.SpeedToPortion(Vector2.Distance(from, to));
+            return Vector2.LerpUnclamped(from, to, portion);
         }
 
         public static Vector3 LerpBySpeed(this Vector3 from, Vector3 to, float speed) =>
@@ -1834,6 +1946,53 @@ namespace QuizCannersUtilities
             return Vector3.LerpUnclamped(from, to, portion);
         }
 
+        public static Vector3 LerpBySpeed_DirectionFirst(this Vector3 from, Vector3 to, float speed) {
+
+            const float precision = float.Epsilon * 10;
+            
+            var fromMagn = from.magnitude;
+            var toMagn = to.magnitude;
+
+            float dist = Vector3.Distance(from, to);
+            
+            float pathThisFrame = speed * Time.deltaTime;
+
+            if (pathThisFrame >= dist)
+                return to;
+
+            if (fromMagn * toMagn < precision)
+                return from.LerpBySpeed(to, speed);
+
+            var toNormalized = to.normalized;
+
+            var targetDirection = toNormalized * (fromMagn+toMagn)*0.5f;
+
+            var toTargetDirection = targetDirection - from;
+
+            float rotDiffMagn = toTargetDirection.magnitude;
+
+
+            if (pathThisFrame > rotDiffMagn) {
+
+                pathThisFrame -= rotDiffMagn;
+
+                from = targetDirection;
+
+                var newDiff = to - from;
+
+                from += newDiff.normalized * pathThisFrame;
+
+                //from *=1+ pathThisFrame * (targetDirection.magnitude > toMagn ? -1 : 1);
+
+
+            }
+            else
+                from += toTargetDirection * pathThisFrame / rotDiffMagn;
+
+
+            return from;
+        }
+
         public static Vector4 LerpBySpeed(this Vector4 from, Vector4 to, float speed) =>
             Vector4.LerpUnclamped(from, to, speed.SpeedToPortion(Vector4.Distance(from, to)));
 
@@ -1843,12 +2002,12 @@ namespace QuizCannersUtilities
             return Vector4.LerpUnclamped(from, to, portion);
         }
 
-        public static Quaternion LerpBySpeed(this Quaternion from, Quaternion to, float speed) =>
-            Quaternion.LerpUnclamped(from, to, speed.SpeedToPortion(Quaternion.Angle(from, to)));
+        public static Quaternion LerpBySpeed(this Quaternion from, Quaternion to, float speedInDegrees) =>
+            Quaternion.LerpUnclamped(from, to, speedInDegrees.SpeedToPortion(Quaternion.Angle(from, to)));
 
-        public static Quaternion LerpBySpeed(this Quaternion from, Quaternion to, float speed, out float portion)
+        public static Quaternion LerpBySpeed(this Quaternion from, Quaternion to, float speedInDegrees, out float portion)
         {
-            portion = speed.SpeedToPortion(Quaternion.Angle(from, to));
+            portion = speedInDegrees.SpeedToPortion(Quaternion.Angle(from, to));
             return Quaternion.LerpUnclamped(from, to, portion);
         }
 
@@ -1860,11 +2019,11 @@ namespace QuizCannersUtilities
                 ((Mathf.Abs(col.r - other.r) + Mathf.Abs(col.g - other.g) + Mathf.Abs(col.b - other.b)) * 0.33f +
                  Mathf.Abs(col.a - other.a));
 
-        public static float DistanceRgba(this Color col, Color other, QcMath.ColorMask mask) =>
-             (mask.HasFlag(QcMath.ColorMask.R) ? Mathf.Abs(col.r - other.r) : 0) +
-             (mask.HasFlag(QcMath.ColorMask.G) ? Mathf.Abs(col.g - other.g) : 0) +
-             (mask.HasFlag(QcMath.ColorMask.B) ? Mathf.Abs(col.b - other.b) : 0) +
-             (mask.HasFlag(QcMath.ColorMask.A) ? Mathf.Abs(col.a - other.a) : 0);
+        public static float DistanceRgba(this Color col, Color other, ColorMask mask) =>
+             (mask.HasFlag(ColorMask.R) ? Mathf.Abs(col.r - other.r) : 0) +
+             (mask.HasFlag(ColorMask.G) ? Mathf.Abs(col.g - other.g) : 0) +
+             (mask.HasFlag(ColorMask.B) ? Mathf.Abs(col.b - other.b) : 0) +
+             (mask.HasFlag(ColorMask.A) ? Mathf.Abs(col.a - other.a) : 0);
 
         public static Color LerpBySpeed(this Color from, Color to, float speed) =>
             Color.LerpUnclamped(from, to, speed.SpeedToPortion(from.DistanceRgb(to)));
@@ -1925,8 +2084,36 @@ namespace QuizCannersUtilities
             return changing;
         }
 
+        public static void LerpAlpha_DisableIfZero(this LineRenderer linkRenderer, float target, float speed) {
+
+            var col = linkRenderer.startColor;
+            float alpha = col.a;
+            if (IsLerpingBySpeed(ref alpha, target, speed))
+                linkRenderer.startColor = col.Alpha(alpha);
+
+            col = linkRenderer.endColor;
+            float alpha2 = col.a;
+            if (IsLerpingBySpeed(ref alpha2, target, speed))
+                linkRenderer.endColor = col.Alpha(alpha2);
+
+            bool active = alpha > 0 || alpha2 > 0;
+            
+            linkRenderer.gameObject.SetActive(active);
+
+        }
+
         #endregion
-        
+
+        public static void SkipLerp<T>(this T obj) where T : ILinkedLerping {
+
+            var ld = new LerpData();
+
+            obj.Portion(ld);
+            ld.MinPortion = 1;
+            obj.Lerp(ld, true);
+
+        }
+
         public static void Portion<T>(this T[] list, LerpData ld) where T : ILinkedLerping {
 
             if (typeof(Object).IsAssignableFrom(typeof(T))) {
@@ -2042,26 +2229,6 @@ namespace QuizCannersUtilities
 
             return fadedIn;
         }
-    }
-
-    public static class CustomShaderParameters
-    {
-        public static readonly ShaderProperty.VectorValue ImageProjectionPosition = new ShaderProperty.VectorValue("_imgProjPos");
-        public static readonly ShaderProperty.TextureValue NextTexture = new ShaderProperty.TextureValue("_Next_MainTex");
-        public static readonly ShaderProperty.TextureValue CurrentTexture = new ShaderProperty.TextureValue("_MainTex_Current");
-        public static readonly ShaderProperty.FloatValue TransitionPortion = new ShaderProperty.FloatValue("_Transition");
-
-
-#if !NO_PEGI
-        public static void Inspect()
-        {
-            "Image projection position".write_ForCopy(ImageProjectionPosition.NameForDisplayPEGI()); pegi.nl();
-
-            "Next Texture".write_ForCopy(NextTexture.NameForDisplayPEGI()); pegi.nl();
-
-            "Transition portion".write_ForCopy(TransitionPortion.NameForDisplayPEGI()); pegi.nl();
-        }
-#endif
     }
 
 }

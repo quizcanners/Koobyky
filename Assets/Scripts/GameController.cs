@@ -3,101 +3,7 @@ using UnityEngine;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.IO;
 using System;
-
-[Serializable]
-public class SaveData {
-    public  sector[,] grid;
-    public int score;
-    public int blocksToPlace;
-    public int[] givenBlocks = new int[4];
- }
-
-[Serializable]
-public class sector {
-
-    public static List<group> groups = new List<group>();
-
-    public class group {
-        public List<sector> list = new List<sector>();
-    }
-
-    [NonSerialized]
-    public group myGroup;
-
-    public int x;
-    public int y;
-    [NonSerialized]
-    public BlockScript myBlock;
-    public int color;
-
-
-    public bool nextTo (sector other) {
-        return (((other.x == x) || (other.y == y)) && ((Mathf.Abs(x - other.x) == 1) || (Mathf.Abs(y - other.y) == 1)));
-
-    }
-    public delegate bool groupingCondition(sector a, sector b);
-    public static void groupSectors(groupingCondition cnd, ref sector[,] grid, int gridsize) {
-        foreach (sector s in grid) 
-            s.myGroup = null;
-          
-        groups.Clear();
-
-        for (int x = 0; x < gridsize; x++)
-            for (int y = 0; y < gridsize; y++) {
-                sector s = grid[x, y];
-                if ((x < gridsize - 1) && (cnd(s, grid[x + 1, y])))
-                    checkGroups(s, grid[x + 1, y]);
-                if ((y < gridsize - 1) && (cnd(s, grid[x, y + 1])))
-                    checkGroups(s, grid[x, y + 1]);
-            }
-
-    }
-    static void checkGroups(sector a, sector b)  {
-
-        if ((a.myGroup != null) && (b.myGroup != null)) mergeGroups( a.myGroup,  b.myGroup);
-        else {
-
-            if (a.myGroup != null)  {
-                a.myGroup.list.Add(b);
-                b.myGroup = a.myGroup;
-            }
-            else if (b.myGroup != null)
-            {
-                b.myGroup.list.Add(a);
-                a.myGroup = b.myGroup;
-            }
-            else
-            {
-                group  tmp = new group();
-                tmp.list.Add(a);
-                tmp.list.Add(b);
-                a.myGroup = tmp;
-                b.myGroup = tmp;
-                sector.groups.Add(tmp);
-            }
-        }
-
-
-
-
-    }
-    static void mergeGroups(group a, group b) {
-
-        if (a == b)
-            return;
-
-        foreach (sector s in b.list) {
-            s.myGroup = a;
-            a.list.Add(s);
-        }
-
-        b.list.Clear();
-    }
-    public sector(int nx, int ny) {
-        x = nx;
-        y = ny;
-    }
-}
+using QuizCannersUtilities;
 
 public class GameController : MonoBehaviour {
     public int pixelsLayer;
@@ -105,11 +11,27 @@ public class GameController : MonoBehaviour {
 
     public Color[] colors = { Color.blue, Color.yellow, Color.green };
     public Material blockMaterial;
+   
+
     public Transform lineupPosition;
     public GameObject blockPrefab;
     public MeshCollider _collider;
     public ScoreTextMGMT scoreText;
 
+    // _BG_GRAD_COL_1("Background Upper", Color) = (1,1,1,1)
+    //   _BG_CENTER_COL("Background Center", Color) = (1,1,1,1)
+    //  _BG_GRAD_COL_2("Background Lower", Color) = (1,1,1,1)
+
+    [Header("Gradient BG & Outline")]
+    const float bgSpeed = 0.2f;
+    private LinkedLerp.MaterialColor color0 = new LinkedLerp.MaterialColor("_BG_GRAD_COL_1", Color.black, startingSpeed: bgSpeed);
+    private LinkedLerp.MaterialColor color1 = new LinkedLerp.MaterialColor("_BG_CENTER_COL", Color.black, startingSpeed: bgSpeed);
+    private LinkedLerp.MaterialColor color2 = new LinkedLerp.MaterialColor("_BG_GRAD_COL_2", Color.black, startingSpeed: bgSpeed);
+    private LinkedLerp.MaterialColor outline = new LinkedLerp.MaterialColor("_OutlineColor", Color.clear, startingSpeed: 4f);
+
+ 
+
+    [Header("Audio")]
 
     public AudioClip startSound;
     public AudioClip firstBlockSound;
@@ -124,6 +46,7 @@ public class GameController : MonoBehaviour {
 
     public AudioSource audioSource;
 
+    [Header("Grid")]
     public int gridsize = 5;
     public int chanceFor1_4Block = 20;
 
@@ -188,15 +111,7 @@ public class GameController : MonoBehaviour {
     void UpdateBG() {
         CameraScaler.inst.RenderTexCamera.Render();
     }
-    public void bgColor(Color col)
-    {
-        CameraScaler.inst.col = col;
-    }
-    public void bgColor(BlockScript bs) {
-        CameraScaler.inst.col = colors[bs.myColor];
-    }
-
-
+    
     bool TryPlace() {
         updatePointedSector();
         BlockScript tmp = (pointedSector!= null) ? pointedSector.myBlock : null;
@@ -206,7 +121,7 @@ public class GameController : MonoBehaviour {
             currentPlacingBlock++;
             if (currentPlacingBlock < blocksToPlace)
             {
-                bgColor(givenBlocks[currentPlacingBlock]);
+                //bgColor(givenBlocks[currentPlacingBlock]);
                 if (currentPlacingBlock == 1)
                     audioSource.PlayOneShot(firstBlockSound, 1f);
                 else
@@ -214,7 +129,7 @@ public class GameController : MonoBehaviour {
             }
             else
             {
-                bgColor(Color.black);
+                //bgColor(Color.black);
                 audioSource.PlayOneShot(finalBlockSound,1f);
             }
 
@@ -225,7 +140,7 @@ public class GameController : MonoBehaviour {
             BlockScript rem = givenBlocks[currentPlacingBlock - 1];
             BlockToLineup(rem, currentPlacingBlock - 1);
             audioSource.PlayOneShot(backSound, 1f);
-            bgColor(rem);
+            //bgColor(rem);
             SetSectorValue(rem.mySector, null);
         }
 
@@ -249,13 +164,26 @@ public class GameController : MonoBehaviour {
             SetSectorValue(givenBlocks[i].mySector, null);
           
         }
-
-
-        bgColor(givenBlocks[0]);
+        
         UpdateBG();
         currentPlacingBlock = 0;
         placing = false;
 
+    }
+
+    private Color GetPreviewColor(int blockIndex)
+    {
+        
+        blockIndex += currentPlacingBlock;
+
+        if (blockIndex >= blocksToPlace)
+            return Color.black;
+
+        var col = colors[givenBlocks[blockIndex].myColor];
+
+        col = Color.LerpUnclamped(col, Color.black, 0.5f);
+
+        return col;
     }
 
     BlockScript getBlock (int colorIndex) {
@@ -409,8 +337,6 @@ public class GameController : MonoBehaviour {
         for (int i=0; i< blocksToPlace; i++)
             BlockToLineup(getBlock(UnityEngine.Random.Range(0, colors.Length)), i);
 
-        bgColor(givenBlocks[0]);
-
     }
 
     void ClearBlocks() {
@@ -466,7 +392,22 @@ public class GameController : MonoBehaviour {
     float shotsToDo = 0;
 
     private void Update() {
+
+        LerpData lr = new LerpData();
+
+        color0.Portion(lr, GetPreviewColor(1)); // = );
+        //color1.Portion(lr, GetColor(1));
+        color2.Portion(lr, GetPreviewColor(2));
+        outline.Portion(lr, GetPreviewColor(0));
+
+        color0.Lerp(lr);
+        //color1.Lerp(lr);
+        color2.Lerp(lr);
+        outline.Lerp(lr);
+
+            
         shotsDelay -= Time.deltaTime;
+
         if ((shotsToDo>0) && (shotsDelay < 0)) {
             audioSource.PlayOneShot(scoreSound);
             shotsDelay = 0.02f;
@@ -488,8 +429,9 @@ public class GameController : MonoBehaviour {
             float scale = b.transform.localScale.x;
             scale = Mathf.Lerp(scale, (i == currentPlacingBlock) ? 1 : 0.5f, Time.deltaTime * 10);
             b.transform.localScale = Vector3.one * scale;
-
         }
+
+
 
 
     }
@@ -513,8 +455,6 @@ public class GameController : MonoBehaviour {
             score = sd.score;
 
             scoreText.Restart(score);
-
-            bgColor(givenBlocks[0]);
 
             return true;
         }
@@ -541,7 +481,9 @@ public class GameController : MonoBehaviour {
     {
         SaveData sd = new SaveData();
 
-        foreach (sector s in grid) s.color = (s.myBlock == null) ? -1 : s.myBlock.myColor;
+        foreach (sector s in grid)
+            s.color = (s.myBlock == null) ? -1 : s.myBlock.myColor;
+
         sd.grid = grid;
         sd.score = score;
         sd.blocksToPlace = blocksToPlace;
@@ -554,4 +496,111 @@ public class GameController : MonoBehaviour {
         file.Close();
     }
 
+}
+
+[Serializable]
+public class SaveData
+{
+    public sector[,] grid;
+    public int score;
+    public int blocksToPlace;
+    public int[] givenBlocks = new int[4];
+}
+
+[Serializable]
+public class sector
+{
+
+    public static List<group> groups = new List<group>();
+
+    public class group
+    {
+        public List<sector> list = new List<sector>();
+    }
+
+    [NonSerialized]
+    public group myGroup;
+
+    public int x;
+    public int y;
+    [NonSerialized]
+    public BlockScript myBlock;
+    public int color;
+
+
+    public bool nextTo(sector other)
+    {
+        return (((other.x == x) || (other.y == y)) && ((Mathf.Abs(x - other.x) == 1) || (Mathf.Abs(y - other.y) == 1)));
+
+    }
+    public delegate bool groupingCondition(sector a, sector b);
+    public static void groupSectors(groupingCondition cnd, ref sector[,] grid, int gridsize)
+    {
+        foreach (sector s in grid)
+            s.myGroup = null;
+
+        groups.Clear();
+
+        for (int x = 0; x < gridsize; x++)
+            for (int y = 0; y < gridsize; y++)
+            {
+                sector s = grid[x, y];
+                if ((x < gridsize - 1) && (cnd(s, grid[x + 1, y])))
+                    checkGroups(s, grid[x + 1, y]);
+                if ((y < gridsize - 1) && (cnd(s, grid[x, y + 1])))
+                    checkGroups(s, grid[x, y + 1]);
+            }
+
+    }
+    static void checkGroups(sector a, sector b)
+    {
+
+        if ((a.myGroup != null) && (b.myGroup != null)) mergeGroups(a.myGroup, b.myGroup);
+        else
+        {
+
+            if (a.myGroup != null)
+            {
+                a.myGroup.list.Add(b);
+                b.myGroup = a.myGroup;
+            }
+            else if (b.myGroup != null)
+            {
+                b.myGroup.list.Add(a);
+                a.myGroup = b.myGroup;
+            }
+            else
+            {
+                group tmp = new group();
+                tmp.list.Add(a);
+                tmp.list.Add(b);
+                a.myGroup = tmp;
+                b.myGroup = tmp;
+                sector.groups.Add(tmp);
+            }
+        }
+
+
+
+
+    }
+    static void mergeGroups(group a, group b)
+    {
+
+        if (a == b)
+            return;
+
+        foreach (sector s in b.list)
+        {
+            s.myGroup = a;
+            a.list.Add(s);
+        }
+
+        b.list.Clear();
+    }
+    public sector(int nx, int ny)
+    {
+        x = nx;
+        y = ny;
+    }
 }

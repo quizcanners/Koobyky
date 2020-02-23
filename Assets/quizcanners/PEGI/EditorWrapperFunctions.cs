@@ -1,4 +1,4 @@
-﻿#if !NO_PEGI && UNITY_EDITOR
+﻿#if UNITY_EDITOR
 
 using UnityEngine;
 using UnityEditor;
@@ -12,21 +12,35 @@ using QuizCannersUtilities;
 using UnityEditorInternal;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
-using static QuizCannersUtilities.QcMath;
 
+#endif
 
 // ReSharper disable InconsistentNaming
 #pragma warning disable IDE1006 // Naming Styles
 #pragma warning disable IDE0034 // Simplify 'default' expression
 #pragma warning disable IDE0019 // Use pattern matching
 #pragma warning disable IDE0018 // Inline variable declaration
-
+#pragma warning disable IDE0011 // Add braces
+#pragma warning disable IDE0008 // Use explicit type
+#pragma warning disable IDE0009 // Member access should be qualified.
 
 namespace PlayerAndEditorGUI
 {
 
     public static class ef {
 
+        #region Non Editor Only
+
+        public static object inspectedTarget;
+
+        public static bool isFoldedOutOrEntered;
+
+        public static bool globChanged; // Some times user can change temporary fields, like delayed Edits
+        #endregion
+
+
+
+#if UNITY_EDITOR
         public enum EditorType { Mono, ScriptableObject, Material, Unknown }
 
         public static EditorType editorTypeForDefaultInspector = EditorType.Unknown;
@@ -34,9 +48,17 @@ namespace PlayerAndEditorGUI
         private static bool _lineOpen = false;
         private static int _selectedFold = -1;
         private static int _elementIndex;
+        public static Object inspectedUnityObject;
         public static SerializedObject serObj;
         private static Editor _editor;
         private static PEGI_Inspector_Material _materialEditor;
+
+        public static void RepaintEditor() {
+            if (_editor)
+                _editor.Repaint();
+            if (_materialEditor!= null)
+                _materialEditor.unityMaterialEditor.Repaint();
+        }
 
         public static bool DefaultInspector()
         {
@@ -80,7 +102,7 @@ namespace PlayerAndEditorGUI
 
             var o = (T)editor.target;
             var so = editor.serializedObject;
-            pegi.inspectedTarget = editor.target;
+            inspectedTarget = editor.target;
 
             var go = o.gameObject;
 
@@ -141,7 +163,7 @@ namespace PlayerAndEditorGUI
 
             var o = (T)editor.target;
             var so = editor.serializedObject;
-            pegi.inspectedTarget = editor.target;
+            inspectedTarget = editor.target;
 
             var pgi = o as IPEGI;
             if (pgi != null)
@@ -164,7 +186,7 @@ namespace PlayerAndEditorGUI
 
             editorTypeForDefaultInspector = EditorType.Material;
 
-            pegi.inspectedTarget = editor.unityMaterialEditor.target;
+            inspectedTarget = editor.unityMaterialEditor.target;
 
             var mat = editor.unityMaterialEditor.target as Material;
 
@@ -177,7 +199,7 @@ namespace PlayerAndEditorGUI
             return changes || changed;
         }
         
-        public static bool toggleDefaultInspector()
+        public static bool toggleDefaultInspector(Object target)
         {
             var changed = false;
 
@@ -192,13 +214,22 @@ namespace PlayerAndEditorGUI
             }
             else
             {
-                pegi.toggle(ref PEGI_Inspector_Base.drawDefaultInspector, icon.Exit, icon.Debug,
-                   "Toggle Between regular and PEGI inspector", 20).changes(ref changed);
 
-                if (PEGI_Inspector_Base.drawDefaultInspector &&
-                    "Custom Inspector".ClickLabel(style: PEGI_Styles.ExitLabel).nl(ref changed))
-                    PEGI_Inspector_Base.drawDefaultInspector = false;
+                if (target == inspectedUnityObject)
+                {
+                    bool isDefault = target == PEGI_UnityObjectInspector_Base.drawDefaultInspector;
 
+                    if (pegi.toggle(ref isDefault, icon.Exit, icon.Debug,
+                        "Toggle Between regular and PEGI inspector", 20).changes(ref changed))
+                        PEGI_UnityObjectInspector_Base.drawDefaultInspector = isDefault ? target : null;
+
+                    if (isDefault && "Custom Inspector".ClickLabel(style: PEGI_Styles.ExitLabel).nl(ref changed))
+                        PEGI_UnityObjectInspector_Base.drawDefaultInspector = null;
+                }
+                else
+                {
+                    pegi.ClickHighlight(target);
+                }
             }
 
             return changed;
@@ -215,7 +246,7 @@ namespace PlayerAndEditorGUI
             _elementIndex = 0;
             pegi.focusInd = 0;
             _lineOpen = false;
-            pegi.globChanged = false;
+            globChanged = false;
         }
 
         public static T ClearFromPooledSerializedObjects<T>(T obj) where T : Object
@@ -243,16 +274,16 @@ namespace PlayerAndEditorGUI
             return changes;
         }
 
-        private static bool change { get { pegi.globChanged = true; return true; } }
+        private static bool change { get { globChanged = true; return true; } }
 
-        private static bool Dirty(this bool val) { pegi.globChanged |= val; return val; }
+        private static bool Dirty(this bool val) { globChanged |= val; return val; }
 
-        private static bool changes => pegi.globChanged;
+        private static bool changes => globChanged;
 
         private static bool ignoreChanges(this bool changed)
         {
             if (changed)
-                pegi.globChanged = false;
+                globChanged = false;
             return changed;
         }
 
@@ -264,7 +295,7 @@ namespace PlayerAndEditorGUI
         {
             if (_lineOpen) return;
 
-            pegi.tabIndex = 0;
+           
             EditorGUILayout.BeginHorizontal();
             _lineOpen = true;
 
@@ -290,17 +321,16 @@ namespace PlayerAndEditorGUI
             textAndToolTip.tooltip = tip;
             return textAndToolTip;
         }
-
+        
         private static GUIContent TextAndTip(string text)
         {
             textAndToolTip.text = text;
             textAndToolTip.tooltip = text;
             return textAndToolTip;
         }
-
-
+        
         #region Foldout
-        private static bool IsFoldedOut { get { return pegi.isFoldedOutOrEntered; } set { pegi.isFoldedOutOrEntered = value; } }
+      
 
         private static bool StylizedFoldOut(bool foldedOut, string txt, string hint = "FoldIn/FoldOut")
         {
@@ -319,32 +349,32 @@ namespace PlayerAndEditorGUI
         public static bool foldout(string txt, ref bool state)
         {
             state = StylizedFoldOut(state, txt);
-            IsFoldedOut = state;
-            return IsFoldedOut;
+            isFoldedOutOrEntered = state;
+            return isFoldedOutOrEntered;
         }
 
         public static bool foldout(string txt, ref int selected, int current)
         {
 
-            IsFoldedOut = (selected == current);
+            isFoldedOutOrEntered = (selected == current);
 
-            if (StylizedFoldOut(IsFoldedOut, txt))
+            if (StylizedFoldOut(isFoldedOutOrEntered, txt))
                 selected = current;
             else
-                if (IsFoldedOut) selected = -1;
+                if (isFoldedOutOrEntered) selected = -1;
 
-            IsFoldedOut = selected == current;
+            isFoldedOutOrEntered = selected == current;
 
-            return IsFoldedOut;
+            return isFoldedOutOrEntered;
         }
 
         public static bool foldout(string txt)
         {
-            IsFoldedOut = foldout(txt, ref _selectedFold, _elementIndex);
+            isFoldedOutOrEntered = foldout(txt, ref _selectedFold, _elementIndex);
 
             _elementIndex++;
 
-            return IsFoldedOut;
+            return isFoldedOutOrEntered;
         }
 
         #endregion
@@ -675,10 +705,10 @@ namespace PlayerAndEditorGUI
             return EndCheckLine();
         }
         
-        public static bool editBig(ref string text)
+        public static bool editBig(ref string text, int height = 100)
         {
             BeginCheckLine();
-            text = EditorGUILayout.TextArea(text, GUILayout.MaxHeight(100));
+            text = EditorGUILayout.TextArea(text, GUILayout.MaxHeight(height));
             return EndCheckLine();
         }
         
@@ -737,18 +767,25 @@ namespace PlayerAndEditorGUI
             val = EditorGUILayout.DoubleField(val);
             return EndCheckLine();
         }
-
+        
         public static bool edit(ref int val, int min, int max)
         {
             BeginCheckLine();
-            val = EditorGUILayout.IntSlider(val, min, max); //Slider(val, min, max);
+            val = EditorGUILayout.IntSlider(val, min, max); 
             return EndCheckLine();
         }
+
+       /* public static bool edit(ref int val, int min, int max)
+        {
+            BeginCheckLine();
+            val = (int)EditorGUILayout.Slider((float)val, (float)min, (float)max); 
+            return EndCheckLine();
+        }*/
 
         public static bool edit(ref uint val, uint min, uint max)
         {
             BeginCheckLine();
-            val = (uint)EditorGUILayout.IntSlider((int)val, (int)min, (int)max); //Slider(val, min, max);
+            val = (uint)EditorGUILayout.IntSlider((int)val, (int)min, (int)max); 
             return EndCheckLine();
         }
 
@@ -782,6 +819,15 @@ namespace PlayerAndEditorGUI
 
         }
 
+        public static bool edit(string label, ref Vector3 vec)
+        {
+
+            BeginCheckLine();
+            vec = EditorGUILayout.Vector3Field(label, vec);
+            return EndCheckLine();
+
+        }
+        
         public static bool edit(ref Color col, int width)
         {
 
@@ -836,12 +882,28 @@ namespace PlayerAndEditorGUI
             return EndCheckLine();
         }
 
+        public static bool edit(ref long val)
+        {
+            BeginCheckLine();
+            val = EditorGUILayout.LongField(val);
+            return EndCheckLine();
+        }
+
+
         public static bool edit(ref int val, int width)
         {
             BeginCheckLine();
             val = EditorGUILayout.IntField(val, GUILayout.MaxWidth(width));
             return EndCheckLine();
         }
+
+        public static bool edit(ref long val, int width)
+        {
+            BeginCheckLine();
+            val = EditorGUILayout.LongField(val, GUILayout.MaxWidth(width));
+            return EndCheckLine();
+        }
+
 
         public static bool edit(ref uint val, int width)
         {
@@ -957,11 +1019,16 @@ namespace PlayerAndEditorGUI
 
         // static int editedIntegerIndex;
         // static int editedInteger;
-        public static bool editDelayed(ref int val, int width)
+        public static bool editDelayed(ref int val, int width = -1)
         {
 
             BeginCheckLine();
-            val = EditorGUILayout.DelayedIntField(val, GUILayout.MaxWidth(width));
+
+            if (width > 0)
+                val = EditorGUILayout.DelayedIntField(val, GUILayout.MaxWidth(width));
+            else
+                val = EditorGUILayout.DelayedIntField(val);
+
             return EndCheckLine();
 
             /* if (KeyCode.Return.IsDown() && (_elementIndex == editedIntegerIndex))
@@ -1047,6 +1114,8 @@ namespace PlayerAndEditorGUI
         #endregion
 
         #region Property
+
+     
 
         public static bool edit_Property<T>(int width, Expression<Func<T>> memberExpression, UnityEngine.Object obj, bool includeChildren)
         {
@@ -1176,7 +1245,7 @@ namespace PlayerAndEditorGUI
         public static bool Click(Texture image, int width, GUIStyle style = null)
         {
             if (style == null)
-                style = PEGI_Styles.ImageButton;
+                style = PEGI_Styles.ImageButton.Current;
 
             checkLine();
             return GUILayout.Button(image, style, GUILayout.MaxHeight(width), GUILayout.MaxWidth(width + 10)) && change;
@@ -1187,7 +1256,7 @@ namespace PlayerAndEditorGUI
         public static bool ClickImage(GUIContent cnt, int width, int height, GUIStyle style = null)
         {
             if (style == null)
-                style = PEGI_Styles.ImageButton;
+                style = PEGI_Styles.ImageButton.Current;
 
             checkLine();
 
@@ -1231,26 +1300,30 @@ namespace PlayerAndEditorGUI
 
             checkLine();
             GUI.enabled = false;
-            Color.clear.SetBgColor();
-            GUILayout.Button(cnt, PEGI_Styles.ImageButton, GUILayout.MaxWidth(width + 10), GUILayout.MaxHeight(height));
+            pegi.SetBgColor(Color.clear);
+            GUILayout.Button(cnt, PEGI_Styles.ImageButton.Current, GUILayout.MaxWidth(width + 10), GUILayout.MaxHeight(height));
             pegi.PreviousBgColor();
             GUI.enabled = true;
 
         }
 
-        public static void write(string text, int width)
-        {
-
+        public static void write(string text, int width) {
             checkLine();
             EditorGUILayout.LabelField(text, EditorStyles.miniLabel, GUILayout.MaxWidth(width));
+        }
+
+        public static void write_ForCopy(string text, int width)
+        {
+            checkLine();
+            EditorGUILayout.SelectableLabel(text, GUILayout.MaxWidth(width));
         }
 
         public static void write(GUIContent cnt)
         {
             checkLine();
-            EditorGUILayout.LabelField(cnt, PEGI_Styles.WrappingText);
+            EditorGUILayout.LabelField(cnt, PEGI_Styles.ClippingText.Current);
         }
-
+        
         public static void write(Texture tex, int width)
         {
             checkLine();
@@ -1275,14 +1348,21 @@ namespace PlayerAndEditorGUI
         public static void write(GUIContent cnt, int width)
         {
             checkLine();
-            EditorGUILayout.LabelField(cnt, PEGI_Styles.WrappingText, GUILayout.MaxWidth(width));
+            EditorGUILayout.LabelField(cnt, PEGI_Styles.ClippingText.Current, GUILayout.MaxWidth(width));
         }
 
         public static void write(string text)
         {
             checkLine();
-            EditorGUILayout.LabelField(text, PEGI_Styles.WrappingText);
+            EditorGUILayout.LabelField(text, PEGI_Styles.ClippingText.Current);
         }
+
+        public static void write_ForCopy(string text)
+        {
+            checkLine();
+            EditorGUILayout.SelectableLabel(text, PEGI_Styles.ClippingText.Current);
+        }
+
 
         public static void write(string text, GUIStyle style)
         {
@@ -1394,14 +1474,14 @@ namespace PlayerAndEditorGUI
         private static TaggedTypesCfg _currentTaggedTypes;
         private static ListMetaData _listMetaData;
 
-        private static bool GetIsSelected(int ind) => (_listMetaData != null) ? _listMetaData.GetIsSelected(ind) : pegi.selectedEls[ind];
+        private static bool GetIsSelected(int ind) => (_listMetaData != null) ? _listMetaData.GetIsSelected(ind) : pegi.Getselected(ind);
 
         private static void SetIsSelected(int ind, bool val)
         {
             if (_listMetaData != null)
                 _listMetaData.SetIsSelected(ind, val);
             else
-                pegi.selectedEls[ind] = val;
+                pegi.SetSelected(ind, val);
         }
 
         public static bool reorder_List<T>(List<T> l, ListMetaData metas)
@@ -1410,22 +1490,25 @@ namespace PlayerAndEditorGUI
 
             EditorGUI.BeginChangeCheck();
 
-            if (_currentReorderedList != l) {
+            if (_currentReorderedList != l)
+            {
 
-                _currentReorderedListTypes = typeof(T).TryGetDerivedClasses();
+                var type = typeof(T);
+
+                _currentReorderedListTypes = type.TryGetDerivedClasses();
 
                 if (_currentReorderedListTypes == null)
                 {
-                    _currentTaggedTypes = typeof(T).TryGetTaggedClasses();
+                    _currentTaggedTypes = TaggedTypesCfg.TryGetOrCreate(type); //typeof(T).TryGetTaggedClasses();
                     if (_currentTaggedTypes != null)
                         _currentReorderedListTypes = _currentTaggedTypes.Types;
                 }
                 else _currentTaggedTypes = null;
 
-                _currentReorderedType = typeof(T);
+                _currentReorderedType = type;
                 _currentReorderedList = l;
                 if (metas == null)
-                    pegi.selectedEls.Clear();
+                    pegi.UnselectAll();
 
             }
 
@@ -1499,7 +1582,7 @@ namespace PlayerAndEditorGUI
                         rect.width = 100;
 
                         if (select_Type(ref ty, _currentReorderedListTypes, rect))
-                            TaggedTypes.TryChangeObjectType(_currentReorderedList, index, ty, _listMetaData);
+                            TaggedTypes.TryChangeObjectType(_currentReorderedList, index, ty, _currentTaggedTypes ,_listMetaData);
                     }
                     else
                         EditorGUI.LabelField(rect, textAndToolTip);
@@ -1552,8 +1635,12 @@ namespace PlayerAndEditorGUI
         }
 
         #endregion
+        
+#endif
 
     }
+
+
 }
 
 
@@ -1561,5 +1648,3 @@ namespace PlayerAndEditorGUI
 #pragma warning restore IDE0034 // Simplify 'default' expression
 #pragma warning restore IDE0019 // Use pattern matching
 #pragma warning restore IDE0018 // Inline variable declaration
-
-#endif

@@ -12,8 +12,22 @@ namespace PlayerAndEditorGUI {
         FinishMovingCollectionElements, MoveCollectionElements, TryDuplicateSelected, TryCopyReferences,
         Init, List, Collection, Array, Dictionary
     };
-    
-    public static partial class LazyTranslations {
+
+
+
+    public static partial class LazyLocalization {
+
+        public const int eng = (int)SystemLanguage.English;
+        public const int ukr = (int)SystemLanguage.Ukrainian;
+        public const int trk = (int)SystemLanguage.Turkish;
+        public const int rus = (int)SystemLanguage.Russian;
+        public const int chn = (int)SystemLanguage.Chinese;
+        public const int gmn = (int)SystemLanguage.German;
+        public const int spn = (int)SystemLanguage.Spanish;
+        public const int jap = (int)SystemLanguage.Japanese;
+        public const int frc = (int)SystemLanguage.French;
+        public const int kor = (int)SystemLanguage.Korean;
+        public const int ptg = (int)SystemLanguage.Portuguese;
 
         public static LazyTranslation Get(this Msg msg, int lang)
         {
@@ -138,17 +152,7 @@ namespace PlayerAndEditorGUI {
 
         public static int _systemLanguage = -1;
         
-        public const int eng = (int)SystemLanguage.English;
-        public const int ukr = (int)SystemLanguage.Ukrainian;
-        public const int trk = (int)SystemLanguage.Turkish;
-        public const int rus = (int)SystemLanguage.Russian;
-        public const int chn = (int)SystemLanguage.Chinese;
-        public const int gmn = (int)SystemLanguage.German;
-        public const int spn = (int)SystemLanguage.Spanish;
-        public const int jap = (int)SystemLanguage.Japanese;
-        public const int frc = (int)SystemLanguage.French;
-        public const int kor = (int)SystemLanguage.Korean;
-        public const int ptg = (int)SystemLanguage.Portuguese;
+
 
         public class LazyTranslation
         {
@@ -170,7 +174,6 @@ namespace PlayerAndEditorGUI {
         }
 
         #region Inspector
-        #if !NO_PEGI
 
         private static readonly List<int> supportedLanguages = new List<int>() {eng, ukr, trk};
 
@@ -204,7 +207,6 @@ namespace PlayerAndEditorGUI {
             return false;
         }
         
-        #endif
         #endregion
 
         #region Translation Class
@@ -308,7 +310,6 @@ namespace PlayerAndEditorGUI {
             return msg.Get(_systemLanguage);
         }
         
-        #if !NO_PEGI
         public static string F(this Msg msg, Msg other) =>
             msg.GetText() + " " + other.GetText();
         public static bool DocumentationClick(this Msg msg) => msg.GetLt().DocumentationClick();
@@ -322,7 +323,6 @@ namespace PlayerAndEditorGUI {
         public static bool Click(this icon icon, Msg text, ref bool changed) => icon.ClickUnFocus(text.GetText()).changes(ref changed);
         public static bool ClickUnFocus(this icon icon, Msg text, int size = pegi.defaultButtonSize) => pegi.ClickUnFocus(icon.GetIcon(), text.GetText(), size);
         public static bool ClickUnFocus(this icon icon, Msg text, int width, int height) => pegi.ClickUnFocus(icon.GetIcon(), text.GetText(), width, height);
-        #endif
 
         #endregion
 

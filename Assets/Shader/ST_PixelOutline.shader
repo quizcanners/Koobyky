@@ -7,7 +7,7 @@ Shader "Standart/ST_PixelOutline" {
 		_Smudge("_smudge", 2D) = "white" {}
 		_BumpEx("_bumpEx", 2D) = "white" {}
 		_BumpDetail("_bumpDetail", 2D) = "white" {}
-		_ParticlesTex("Particles_Tex", 2D) = "white" {}
+		//_ParticlesTex("Particles_Tex", 2D) = "white" {}
 	}
 
 	Category{
@@ -118,6 +118,8 @@ Shader "Standart/ST_PixelOutline" {
 
 					float4 c = tex2Dlod(_GridTex, float4(i.perfuv.xy, 0, 0));
 
+					//c.rgb = normalize(c.rgb);
+
 					float2 border =  (abs(float2(bumpUV.x,bumpUV.y))-0.4)*10;
 					float bord = max(0,max(border.x*i.hold.x,border.y*i.hold.y)*i.hold.w+i.hold.z*min(border.x,border.y));
 
@@ -132,6 +134,8 @@ Shader "Standart/ST_PixelOutline" {
 
 						float2 nn2 = UnpackNormal(tex2Dlod(_BumpDetail, float4(i.texcoord.xy*(4+nn.rg), 0, 0)));
 						nn+=nn2*(_touchPoint.z*2+1-c.a)*0.05;
+
+					float side = length(nn)*2;
 
 
 					float smudge = tex2D(_Smudge, i.texcoord.xy * 2+nn*0.1).a;
@@ -149,7 +153,7 @@ Shader "Standart/ST_PixelOutline" {
 					float4 col = (
 		
 						(c + _OutlineColor*(pow(dist,3)*_touchPoint.z)*smudge
-						+ light*(0.5)
+						+ light*0.25*(1 + side) //* side
 							)
 						+ tex2Dlod(_ExplodedTex, float4(pixuv+(nn)*0.2,0,0)) * 2 * deSmudge //* particles
 	
@@ -161,18 +165,16 @@ Shader "Standart/ST_PixelOutline" {
 
 					col.rgb+=bgr*0.1;
 	
-				
-
-
+					/*
 					#if USE_NOISE_TEXTURE
 						float4 noise = tex2Dlod(_Global_Noise_Lookup, float4(i.texcoord.xy * 13.5 + float2(_SinTime.w, _CosTime.w) * 32, 0, 0));
 					#ifdef UNITY_COLORSPACE_GAMMA
-						col.rgb += col.rgb*(noise.rgb - 0.5)*0.2;
+						col.rgb += col.rgb*(noise.rgb - 0.5)*0.1;
 					#else
 						col.rgb += col.rgb*(noise.rgb - 0.5)*0.75;
 					#endif
 					#endif
-
+					*/
 						return  col;
 					;
 

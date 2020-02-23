@@ -2,6 +2,7 @@
 using PlayerAndEditorGUI;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.InteropServices.WindowsRuntime;
 using QuizCannersUtilities;
 using Unity.Collections;
 using UnityEngine;
@@ -15,15 +16,14 @@ namespace QuizCannersUtilities {
 #pragma warning disable IDE0019 // Use pattern matching
 #pragma warning disable IDE0018 // Inline variable declaration
 
-
     public static class ShaderProperty {
 
-        #region Base
+        #region Base Abstract
 
         public abstract class BaseShaderPropertyIndex : AbstractCfg, IGotDisplayName, IPEGI_ListInspect
         {
             protected int id;
-            private string _name;
+            protected string name;
 
             public override int GetHashCode() => id;
 
@@ -34,12 +34,12 @@ namespace QuizCannersUtilities {
 
                 var bi = obj as BaseShaderPropertyIndex;
 
-                return bi != null ? bi.id == id : _name.SameAs(obj.ToString());
+                return bi != null ? bi.id == id : name.Equals(obj.ToString());
             }
 
-            private void UpdateIndex() => id = Shader.PropertyToID(_name);
+            private void UpdateIndex() => id = Shader.PropertyToID(name);
 
-            public override string ToString() => _name;
+            public override string ToString() => name;
 
             public abstract void SetOn(Material mat);
 
@@ -62,22 +62,21 @@ namespace QuizCannersUtilities {
             }
 
             #region Inspector
-            public string NameForDisplayPEGI()=> _name;
-
-            #if !NO_PEGI
+            public string NameForDisplayPEGI()=> name;
+            
             public bool InspectInList(IList list, int ind, ref int edited)
             {
                 "Id: {0}".F(id).write(50);
-                _name.write_ForCopy();
+                name.write_ForCopy();
                
                 return false;
             }
-            #endif
+           
             #endregion
 
             #region Encode & Decode
             public override CfgEncoder Encode() => new CfgEncoder()
-                .Add_String("n", _name)
+                .Add_String("n", name)
                 //.Add_IfTrue("nm", nonMaterialProperty)
             ;
             
@@ -85,7 +84,7 @@ namespace QuizCannersUtilities {
             {
                 switch (tg)
                 {
-                    case "n":  _name = data; UpdateIndex();  break;
+                    case "n":  name = data; UpdateIndex();  break;
                    // case "nm": nonMaterialProperty = data.ToBool();  break;
                     default: return false;
                 }
@@ -101,7 +100,7 @@ namespace QuizCannersUtilities {
 
             protected BaseShaderPropertyIndex(string name)
             {
-                _name = name;
+                this.name = name;
                 UpdateIndex();
             }
 
@@ -119,19 +118,32 @@ namespace QuizCannersUtilities {
 
         #endregion
 
-        #region Generic Extensions
-
-        public abstract class ShaderPropertyIndexGeneric<T> : BaseShaderPropertyIndex {
-
-            public T lastValue;
+        #region Generics
+ 
+        public abstract class IndexGeneric<T> : BaseShaderPropertyIndex {
+            
+            public T latestValue;
 
             public abstract T Get(Material mat);
 
-            public abstract T GlobalValue { get; set; }
+            protected abstract T GlobalValue_Internal { get; set; }
+
+            public T GlobalValue
+            {
+                get
+                {
+                    return GlobalValue_Internal; }
+                set
+                {
+                    latestValue = value;
+                    GlobalValue_Internal = value;
+                }
+
+            }
 
             public virtual Material SetOn(Material material, T value)
             {
-                lastValue = value;
+                latestValue = value;
 
                 if (material)
                     SetOn(material);
@@ -139,79 +151,120 @@ namespace QuizCannersUtilities {
                 return material;
             }
 
-            public Renderer SetOn(Renderer renderer, T value)
+            public virtual Renderer SetOn(Renderer renderer, T value)
             {
-                lastValue = value;
+                latestValue = value;
                 SetOn(renderer);
                 return renderer;
             }
 
-            public void SetOn(MaterialPropertyBlock block, T value)
+            public virtual void SetOn(MaterialPropertyBlock block, T value)
             {
-                lastValue = value;
+                latestValue = value;
                 SetOn(block);
             }
+
+            public void SetGlobal() => GlobalValue = latestValue;
 
             public void SetGlobal(T value) => GlobalValue = value;
 
             public T GetGlobal(T value) => GlobalValue;
 
-            protected ShaderPropertyIndexGeneric()
+            protected IndexGeneric()
             {
             }
 
-            protected ShaderPropertyIndexGeneric(string name) : base(name)
+            protected IndexGeneric(string name) : base(name)
             {
             }
 
         }
 
-        public static MaterialPropertyBlock Set<T>(this MaterialPropertyBlock block, ShaderPropertyIndexGeneric<T> property)
+        public abstract class IndexWithShaderFeatureGeneric<T> : IndexGeneric<T> {
+
+            private readonly string _featureDirective;
+
+            private bool _directiveGlobalValue;
+
+            private bool GlobalDirectiveChanged()
+            {
+                if (_directiveGlobalValue != DirectiveEnabledForLastValue) {
+                    _directiveGlobalValue = DirectiveEnabledForLastValue;
+                    return true;
+                } else
+                    return false;
+            }
+
+            protected override T GlobalValue_Internal
+            {
+                set {
+                    if (GlobalDirectiveChanged()) 
+                        QcUnity.SetShaderKeyword(_featureDirective, _directiveGlobalValue);
+                }
+            }
+
+            public override Material SetOn(Material material, T value) {
+
+                var ret =  base.SetOn(material, value);
+                
+                material.SetShaderKeyword(_featureDirective, DirectiveEnabledForLastValue);
+
+                return ret;
+            }
+
+            protected IndexWithShaderFeatureGeneric(string name, string featureDirective) : base(name)
+            {
+
+                _featureDirective = featureDirective;
+
+            }
+
+            protected abstract bool DirectiveEnabledForLastValue { get; }
+
+        }
+
+        public static MaterialPropertyBlock Set<T>(this MaterialPropertyBlock block, IndexGeneric<T> property)
         {
             property.SetOn(block);
             return block;
         }
 
-        public static MaterialPropertyBlock Set<T>(this MaterialPropertyBlock block, ShaderPropertyIndexGeneric<T> property, T value)
+        public static MaterialPropertyBlock Set<T>(this MaterialPropertyBlock block, IndexGeneric<T> property, T value)
         {
             property.SetOn(block, value);
             return block;
         }
 
-        public static Material Set<T>(this Material mat, ShaderPropertyIndexGeneric<T> property)
+        public static Material Set<T>(this Material mat, IndexGeneric<T> property)
         {
             property.SetOn(mat);
             return mat;
         }
 
-        public static Material Set<T>(this Material mat, ShaderPropertyIndexGeneric<T> property, T value) =>
+        public static Material Set<T>(this Material mat, IndexGeneric<T> property, T value) =>
             property.SetOn(mat, value);
 
-        public static Renderer Set<T>(this Renderer renderer, ShaderPropertyIndexGeneric<T> property, T value) =>
+        public static Renderer Set<T>(this Renderer renderer, IndexGeneric<T> property, T value) =>
             property.SetOn(renderer, value);
 
-        public static T Get<T>(this Material mat, ShaderPropertyIndexGeneric<T> property) => property.Get(mat);
+        public static T Get<T>(this Material mat, IndexGeneric<T> property) => property.Get(mat);
 
         #endregion
 
         #region Float
 
-        public class FloatValue : ShaderPropertyIndexGeneric<float> {
+        public class FloatValue : IndexGeneric<float> {
 
-            public override void SetOn(Material material) => material.SetFloat(id, lastValue);
+            public override void SetOn(Material material) => material.SetFloat(id, latestValue);
 
             public override float Get(Material material) => material.GetFloat(id);
 
-            public override void SetOn(MaterialPropertyBlock block) => block.SetFloat(id, lastValue);
+            public override void SetOn(MaterialPropertyBlock block) => block.SetFloat(id, latestValue);
 
-            public override float GlobalValue
+            protected override float GlobalValue_Internal
             {
                 get { return Shader.GetGlobalFloat(id); }
-                set
-                {
-                    Shader.SetGlobalFloat(id, value);
-                    lastValue = value;
-                }
+                set{ Shader.SetGlobalFloat(id, value); }
             }
 
             public FloatValue()
@@ -222,47 +275,107 @@ namespace QuizCannersUtilities {
             {
             }
 
-            /*public FloatValue(string name, bool nonMaterial) : base(name, nonMaterial)
-            {
-            }*/
-
         }
-
-
+        
         #endregion
 
         #region Color
 
-        public class ColorValue : ShaderPropertyIndexGeneric<Color>
-        {
+        public class ColorFeature : IndexWithShaderFeatureGeneric<Color> {
 
-            public static readonly ColorValue tintColor = new ColorValue("_TintColor");
+            public static readonly ColorFloat4Value tintColor = new ColorFloat4Value("_TintColor");
 
-            public override void SetOn(Material material) => material.SetColor(id, lastValue);
+            public override void SetOn(Material material) => material.SetColor(id, latestValue);
+            
+            public override Color Get(Material material) => material.GetColor(id);
+
+            public override void SetOn(MaterialPropertyBlock block) => block.SetColor(id, latestValue);
+
+            protected override Color GlobalValue_Internal
+            {
+                get { return Shader.GetGlobalColor(id); }
+                set {
+                    base.GlobalValue_Internal = value;
+                    Shader.SetGlobalColor(id, value);
+                }
+            }
+
+            protected override bool DirectiveEnabledForLastValue => latestValue.a > 0.01f;
+            
+            public ColorFeature(string name, string featureDirective) : base(name, featureDirective) { }
+        }
+
+        [Serializable]
+
+        public class ColorFloat4Value : IndexGeneric<Color> {
+
+            public static readonly ColorFloat4Value tintColor = new ColorFloat4Value("_TintColor");
+
+            public bool ConvertToLinear
+            {
+                get
+                {
+                    if (!_colorSpaceChecked)
+                        CheckColorSpace();
+                    return _convertToLinear;
+                }
+                set
+                {
+                    _colorSpaceChecked = true;
+                    _convertToLinear = value;
+                }
+            }
+            private bool _convertToLinear;
+            private bool _colorSpaceChecked = false;
+
+            private Color ConvertedColor => ConvertToLinear ? latestValue.linear : latestValue;
+
+            public override void SetOn(Material material) => material.SetColor(id, ConvertedColor);
 
             public override Color Get(Material material) => material.GetColor(id);
 
-            public override void SetOn(MaterialPropertyBlock block) => block.SetColor(id, lastValue);
+            public override void SetOn(MaterialPropertyBlock block) => block.SetColor(id, ConvertedColor);
 
-            public override Color GlobalValue
+            protected override Color GlobalValue_Internal
             {
                 get { return Shader.GetGlobalColor(id); }
-                set { Shader.SetGlobalColor(id, value); }
+                set { Shader.SetGlobalColor(id, ConvertedColor); }
             }
 
-            public ColorValue()
+            void CheckColorSpace()
             {
-                lastValue = Color.grey;
+                _colorSpaceChecked = true;
+                #if UNITY_EDITOR
+                ConvertToLinear = PlayerSettings.colorSpace == ColorSpace.Linear;
+                #endif
             }
 
-            public ColorValue(string name) : base(name)
+            public ColorFloat4Value()
             {
-                lastValue = Color.grey;
+                latestValue = Color.grey;
             }
 
-            public ColorValue(string name, Color startingColor) : base(name)
+            public ColorFloat4Value(string name) : base(name)
             {
-                lastValue = startingColor;
+                latestValue = Color.grey;
+            }
+
+
+            public ColorFloat4Value(string name, bool convertToLinear) : base(name)
+            {
+                latestValue = Color.grey;
+                ConvertToLinear = convertToLinear;
+            }
+
+            public ColorFloat4Value(string name, Color startingColor, bool convertToLinear) : base(name)
+            {
+                latestValue = startingColor;
+                ConvertToLinear = convertToLinear;
+            }
+
+            public ColorFloat4Value(string name, Color startingColor) : base(name)
+            {
+                latestValue = startingColor;
             }
 
         }
@@ -271,16 +384,16 @@ namespace QuizCannersUtilities {
 
         #region Vector
 
-        public class VectorValue : ShaderPropertyIndexGeneric<Vector4>
+        public class VectorValue : IndexGeneric<Vector4>
         {
 
-            public override void SetOn(Material material) => material.SetVector(id, lastValue);
+            public override void SetOn(Material material) => material.SetVector(id, latestValue);
 
-            public override void SetOn(MaterialPropertyBlock block) => block.SetVector(id, lastValue);
+            public override void SetOn(MaterialPropertyBlock block) => block.SetVector(id, latestValue);
 
             public override Vector4 Get(Material mat) => mat.GetVector(id);
 
-            public override Vector4 GlobalValue
+            protected override Vector4 GlobalValue_Internal
             {
                 get { return Shader.GetGlobalVector(id); }
                 set { Shader.SetGlobalVector(id, value); }
@@ -294,31 +407,26 @@ namespace QuizCannersUtilities {
             {
             }
 
-           /* public VectorValue(string name, bool nonMaterial) : base(name, nonMaterial)
-            {
-            }*/
         }
 
         #endregion
 
         #region Matrix
 
-        public class MatrixValue : ShaderPropertyIndexGeneric<Matrix4x4>
+        public class MatrixValue : IndexGeneric<Matrix4x4>
         {
+            public override void SetOn(Material material) => material.SetMatrix(id, latestValue);
 
-            public override void SetOn(Material material) => material.SetMatrix(id, lastValue);
-
-            public override void SetOn(MaterialPropertyBlock block) => block.SetMatrix(id, lastValue);
+            public override void SetOn(MaterialPropertyBlock block) => block.SetMatrix(id, latestValue);
 
             public override Matrix4x4 Get(Material mat) => mat.GetMatrix(id);
 
-            public override Matrix4x4 GlobalValue
+            protected override Matrix4x4 GlobalValue_Internal
             {
                 get { return Shader.GetGlobalMatrix(id); }
                 set { Shader.SetGlobalMatrix(id, value); }
             }
-
-
+            
             public MatrixValue()
             {
             }
@@ -326,34 +434,38 @@ namespace QuizCannersUtilities {
             public MatrixValue(string name) : base(name)
             {
             }
-
-            /*public MatrixValue(string name, bool nonMaterial) : base(name, nonMaterial)
-            {
-            }*/
         }
 
         #endregion
 
         #region Texture
-
-        public class TextureValue : ShaderPropertyIndexGeneric<Texture>
+        
+        public class TextureValue : IndexGeneric<Texture>
         {
             public static readonly TextureValue mainTexture = new TextureValue("_MainTex");
 
             public override Texture Get(Material mat) => mat.GetTexture(id);
 
-            public override void SetOn(Material material) => material.SetTexture(id, lastValue);
+            public override void SetOn(Material material) => material.SetTexture(id, latestValue);
 
-            public override void SetOn(MaterialPropertyBlock block) => block.SetTexture(id, lastValue);
+            public override void SetOn(MaterialPropertyBlock block) => block.SetTexture(id, latestValue);
 
-            public override Texture GlobalValue
+            protected override Texture GlobalValue_Internal
             {
                 get { return Shader.GetGlobalTexture(id); }
-                set { Shader.SetGlobalTexture(id, value); }
+                set
+                {
+                    Shader.SetGlobalTexture(id, value);
+
+                    if (_screenFillAspect!=null)
+                        Set_ScreenFillAspect();
+
+                }
             }
 
             #region Texture Specific
 
+            [NonSerialized]
             private List<string> _usageTags = new List<string>();
 
             public TextureValue AddUsageTag(string value)
@@ -388,6 +500,36 @@ namespace QuizCannersUtilities {
                     mat.SetTextureScale(id, value);
             }
 
+            private const string FILL_ASPECT_RATION_SUFFIX = "_ScreenFillAspect";
+            private  VectorValue _screenFillAspect;
+            private VectorValue GetScreenFillAspect() {
+            
+                if (_screenFillAspect == null)
+                    _screenFillAspect = new VectorValue(name + FILL_ASPECT_RATION_SUFFIX);
+                return _screenFillAspect;
+                
+            }
+            public void Set_ScreenFillAspect()
+            {
+                if (!latestValue)
+                {
+                    QcUtils.ChillLogger.LogErrorOnce(name+"noTex", "{0} was not set. Can't Update {1} ".F(name, FILL_ASPECT_RATION_SUFFIX));
+                    return;
+                }
+                
+                float screenAspect = pegi.GameView.AspectRatio;
+                float texAspect = ((float)latestValue.width) / latestValue.height;
+
+                Vector2 aspectCorrection = Vector2.one;
+
+                if (screenAspect > texAspect)
+                    aspectCorrection.y = (texAspect / screenAspect);
+                else
+                    aspectCorrection.x = (screenAspect / texAspect);
+
+                GetScreenFillAspect().GlobalValue = aspectCorrection;
+            } 
+
             #endregion
 
             #region Constructors
@@ -395,12 +537,19 @@ namespace QuizCannersUtilities {
             {
             }
 
-            public TextureValue(string name, string tag) : base(name)
+            public TextureValue(string name, string tag, bool set_ScreenFillAspect = false) : base(name)
             {
                 AddUsageTag(tag);
+
+                if (set_ScreenFillAspect)
+                    GetScreenFillAspect();
             }
 
-            public TextureValue(string name) : base(name) { }
+            public TextureValue(string name, bool set_ScreenFillAspect = false) : base(name)
+            {
+                if (set_ScreenFillAspect)
+                    GetScreenFillAspect();
+            }
 
             #endregion
 
@@ -439,7 +588,7 @@ namespace QuizCannersUtilities {
         public static void SetTiling(this Material mat, TextureValue property, Vector2 value) =>
             property.SetTiling(mat, value);
 
-        public static List<TextureValue> MyGetTextureProperties(this Material m)
+        public static List<TextureValue> MyGetTextureProperties_Editor(this Material m)
         {
             #if UNITY_EDITOR
             {
@@ -456,7 +605,34 @@ namespace QuizCannersUtilities {
 
         #endregion
 
+        #region Keyword
 
+        public class ShaderKeyword : IPEGI {
+
+            private string _name;
+
+            private bool lastValue;
+
+            public bool Enabled {
+                get { return lastValue; }
+                set { lastValue = value; QcUnity.SetShaderKeyword(_name, value); }
+            }
+
+            public ShaderKeyword(string name) {
+                _name = name;
+            }
+
+            public bool Inspect()
+            {
+                var changed = false;
+                if (_name.toggleIcon(ref lastValue).changes(ref changed))
+                    Enabled = lastValue;
+
+                return changed;
+            }
+        }
+
+        #endregion
 
     }
 
@@ -510,7 +686,7 @@ namespace QuizCannersUtilities {
             value.Equals(tag.Get(mat, searchFallBacks));
 
         public bool Has(Material mat, ShaderProperty.BaseShaderPropertyIndex property, bool searchFallBacks = false) =>
-            value.Equals(tag.Get(mat, property, searchFallBacks));
+            mat && value.Equals(tag.Get(mat, property, searchFallBacks));
 
         public bool Equals(string tag) => value.Equals(tag);
         
@@ -559,112 +735,33 @@ namespace QuizCannersUtilities {
             val.Has(mat, propertyPrefix, searchFallBacks);
     }
     #endregion
-}
 
 
-namespace PlayerAndEditorGUI {
+    /*
+#if UNITY_EDITOR
+    [CustomPropertyDrawer(typeof(TextureValue))]
+    public class TextureValueDrawer : PropertyDrawer {
 
-    // ReSharper disable InconsistentNaming
-    #pragma warning disable 1692
-    #pragma warning disable IDE1006
-
-    public static class ShaderUtilInspectExtensions {
-
-        #if !NO_PEGI
-        public static bool toggle(this Material mat, string keyword)
-        {
-            var val = Array.IndexOf(mat.shaderKeywords, keyword) != -1;
-
-            if (!keyword.toggleIcon(ref val)) return false;
-
-            if (val)
-                mat.EnableKeyword(keyword);
-            else
-                mat.DisableKeyword(keyword);
-
-            return true;
+        public override void OnGUI(Rect pos, SerializedProperty prop, GUIContent label) {
+            if (prop.Inspect("latestValue", pos, label))
+                prop.GetValue<TextureValue>().SetGlobal();
         }
 
-        public static bool edit(this Material mat, ShaderProperty.FloatValue property, string name = null)
-        {
-            var val = mat.Get(property);
-
-            if (name.IsNullOrEmpty())
-                name = property.NameForDisplayPEGI();
-
-            if (name.edit(name.Length * pegi.letterSizeInPixels, ref val))
-            {
-                mat.Set(property, val);
-                return true;
-            }
-
-            return false;
-        }
-
-        public static bool edit(this Material mat, ShaderProperty.FloatValue property, string name, float min, float max)
-        {
-            var val = mat.Get(property);
-
-            if (name.IsNullOrEmpty())
-                name = property.NameForDisplayPEGI();
-
-            if (name.edit(name.Length * pegi.letterSizeInPixels, ref val, min, max))
-            {
-                mat.Set(property, val);
-                return true;
-            }
-
-            return false;
-        }
-
-        public static bool edit(this Material mat, ShaderProperty.ColorValue property, string name = null)
-        {
-            var val = mat.Get(property);
-
-            if (name.IsNullOrEmpty())
-                name = property.NameForDisplayPEGI();
-
-            if (name.edit(name.Length * pegi.letterSizeInPixels, ref val))
-            {
-                mat.Set(property, val);
-                return true;
-            }
-
-            return false;
-        }
-
-        public static bool edit(this Material mat, ShaderProperty.VectorValue property, string name = null)
-        {
-            var val = mat.Get(property);
-
-            if (name.IsNullOrEmpty())
-                name = property.NameForDisplayPEGI();
-
-            if (name.edit(ref val))
-            {
-                mat.Set(property, val);
-                return true;
-            }
-
-            return false;
-        }
-
-        public static bool edit(this Material mat, ShaderProperty.TextureValue property, string name = null)
-        {
-            var val = mat.Get(property);
-
-            if (name.IsNullOrEmpty())
-                name = property.NameForDisplayPEGI();
-
-            if (name.edit(name.Length * pegi.letterSizeInPixels, ref val))
-            {
-                mat.Set(property, val);
-                return true;
-            }
-
-            return false;
-        }
-        #endif
     }
 
+
+    [CustomPropertyDrawer(typeof(ColorValue))]
+    public class ColorValueDrawer : PropertyDrawer
+    {
+
+        public override void OnGUI(Rect pos, SerializedProperty prop, GUIContent label)
+        {
+            if (prop.Inspect("latestValue", pos, label))
+                prop.GetValue<ColorValue>().SetGlobal();
+        }
+
+    }
+
+#endif
+    */
 }

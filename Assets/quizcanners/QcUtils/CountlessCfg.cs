@@ -155,12 +155,8 @@ namespace QuizCannersUtilities
 
                 if (vb.br[ind] == null)
                     return;
-
-
+                
                 var ar = vb.br[ind].value;
-
-                //  if (ar == 0)
-                //    Debug.Log("ar is zero");
 
                 objs[ar] = default(T);
                 _firstFreeObj = Mathf.Min(_firstFreeObj, ar);
@@ -218,7 +214,7 @@ namespace QuizCannersUtilities
             {
 
                 if (range != BranchSize)
-                    Debug.Log("Error in range: " + range);
+                    Debug.LogError("Error in range: " + range);
 
                 for (var i = 0; i < 8; i++)
                     if (b.br[i] != null)
@@ -282,9 +278,7 @@ namespace QuizCannersUtilities
         private int _edited = -1;
 
         public virtual T GetIfExists(int ind) => Get(ind);
-
-
-#if !NO_PEGI
+        
         public override bool Inspect()
         {
             var changed = false;
@@ -313,7 +307,9 @@ namespace QuizCannersUtilities
                     else
                     {
                         "{0}".F(ind).write(20);
-                        pegi.InspectValueInList(el, null, ind, ref _edited);
+                        if (pegi.InspectValueInCollection(ref el, null, ind, ref _edited) && typeof(T).IsValueType)
+                            this[ind] = el;
+
                     }
 
                     pegi.nl();
@@ -333,7 +329,7 @@ namespace QuizCannersUtilities
             }
             return changed;
         }
-#endif
+
     }
     
     
@@ -387,7 +383,6 @@ namespace QuizCannersUtilities
 
         public override T GetIfExists(int ind)
         {
-            // int originalIndex = ind;
 
             if (ind >= max)
                 return default(T);
@@ -426,7 +421,7 @@ namespace QuizCannersUtilities
 
         public void Decode(string data) {
             Clear();
-            data.DecodeTagsFor(this);
+            this.DecodeTagsFrom(data);
         }
         public CfgEncoder Encode()
         {
@@ -441,8 +436,6 @@ namespace QuizCannersUtilities
             return cody;
         }
 
-        //   public const string storyTag = "TreeObj";
-        //  public override string getDefaultTagName() { return storyTag; }
     }
 
     

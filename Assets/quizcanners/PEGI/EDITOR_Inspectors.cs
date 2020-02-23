@@ -3,20 +3,13 @@ using QuizCannersUtilities;
 using System;
 using System.Linq;
 using System.Reflection;
+using System.Collections.Generic;
 
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
 
 namespace PlayerAndEditorGUI {
-
-#if UNITY_EDITOR
-
-    // Use this two lines to override default Inspector with contents of Inspect() function (replacing SimplePEGInspectorsBrowser with YouClassName)
-    [CustomEditor(typeof(SimplePEGInspectorsBrowser))]
-    public class PEGI_SimpleInspectorsBrowserDrawer : PEGI_Inspector_Mono<SimplePEGInspectorsBrowser> { }
-
-#endif
 
     public abstract class PEGI_Inspector_Material
         #if UNITY_EDITOR
@@ -33,10 +26,7 @@ namespace PlayerAndEditorGUI {
         {
             unityMaterialEditor = materialEditor;
             _properties = properties;
-
-
-
-            #if !NO_PEGI
+            
               pegi.ResetInspectedChain();
 
             if (!drawDefaultInspector) {
@@ -46,8 +36,7 @@ namespace PlayerAndEditorGUI {
 
             ef.editorTypeForDefaultInspector = ef.EditorType.Material;
 
-            pegi.toggleDefaultInspector();
-#endif
+            pegi.toggleDefaultInspector(materialEditor.target);
 
             DrawDefaultInspector();
 
@@ -61,140 +50,236 @@ namespace PlayerAndEditorGUI {
         #else
             {}
         #endif
-
-
-
-
-#if !NO_PEGI
+        
         public abstract bool Inspect(Material mat);
-#endif
 
     }
 
 
 
 #if UNITY_EDITOR
-
-    //[CustomPropertyDrawer(typeof(Ingredient))]
-    // Work in progress...
-    /*
-    public class PEGI_PropertyDrawer<T> : PropertyDrawer where T : class {
-
-        private T GetActualObjectForSerializedProperty(FieldInfo fieldInfo, SerializedProperty property) 
-        {
-            var obj = fieldInfo.GetValue(property.serializedObject.targetObject);
-            if (obj == null) { return null; }
-
-            T actualObject = null;
-            if (obj.GetType().IsArray)
-            {
-                var index = Convert.ToInt32(new string(property.propertyPath.Where(c => char.IsDigit(c)).ToArray()));
-                actualObject = ((T[])obj)[index];
-            }
-            else
-            {
-                actualObject = obj as T;
-            }
-            return actualObject;
-        }
-
-        public override void OnGUI(Rect position, SerializedProperty property, GUIContent label) {
-
-            EditorGUI.BeginProperty(position, label, property);
-
-            position = EditorGUI.PrefixLabel(position, GUIUtility.GetControlID(FocusType.Passive), label);
-            
-            var indent = EditorGUI.indentLevel;
-            EditorGUI.indentLevel = 0;
-
-            T obj = GetActualObjectForSerializedProperty(fieldInfo, property);
-
-           // ef.Inspect_Prop(obj, property);
-            
-            EditorGUI.indentLevel = indent;
-
-            EditorGUI.EndProperty();
-        }
-    }
-    */
-    public abstract class PEGI_Inspector_Base  : Editor
+    
+    public abstract class PEGI_UnityObjectInspector_Base  : Editor
     {
-        public static bool drawDefaultInspector;
-
-        #if !NO_PEGI
+        public static UnityEngine.Object drawDefaultInspector;
+        
         protected abstract bool Inspect(Editor editor);
         protected abstract ef.EditorType EditorType { get;  }
-        #endif
 
-        public override void OnInspectorGUI() {
-            #if !NO_PEGI
-            
+        public override void OnInspectorGUI()
+        {
+            ef.inspectedUnityObject = target;
+
             pegi.ResetInspectedChain();
 
-            if (!drawDefaultInspector) {
+            if (target != drawDefaultInspector) {
                 Inspect(this).RestoreBGColor();
                 return;
             }
 
             ef.editorTypeForDefaultInspector = EditorType;
 
-            pegi.toggleDefaultInspector();
-            #endif
-       
+            pegi.toggleDefaultInspector(target);
+          
             DrawDefaultInspector();
         }
 
 
     }
 
-    public abstract class PEGI_Inspector_Mono<T> : PEGI_Inspector_Base where T : MonoBehaviour
+    public abstract class PEGI_Inspector_Mono<T> : PEGI_UnityObjectInspector_Base where T : MonoBehaviour
     {
-#if !NO_PEGI
         protected override ef.EditorType EditorType => ef.EditorType.Mono;
 
         protected override bool Inspect(Editor editor) => ef.Inspect<T>(editor);
-#endif
+
     }
 
-    public abstract class PEGI_Inspector_SO<T> : PEGI_Inspector_Base where T : ScriptableObject
+    public abstract class PEGI_Inspector_SO<T> : PEGI_UnityObjectInspector_Base where T : ScriptableObject
     {
-#if !NO_PEGI
         protected override ef.EditorType EditorType => ef.EditorType.ScriptableObject;
 
         protected override bool Inspect(Editor editor) => ef.Inspect_so<T>(editor);
-#endif
+
     }
 
-    [CustomEditor(typeof(PEGI_Styles))]
-    public class PEGI_StylesDrawer : PEGI_Inspector_Mono<PEGI_Styles> {
-        /*
-        #if   NO_PEGI
-            [MenuItem("Tools/" + "PEGI" + "/Enable")]
-            public static void EnablePegi() {
-                QcUnity.SetPlatformDirective("NO_PEGI", false);
+    
+
+ // --------------------------------------------------------------------------------------------------------------------
+ // <author>
+ //   HiddenMonk
+ //   http://answers.unity3d.com/users/496850/hiddenmonk.html
+ //   
+ //   Johannes Deml
+ //   send@johannesdeml.com
+ // </author>
+ // --------------------------------------------------------------------------------------------------------------------
+/// <summary>
+/// Extension class for SerializedProperties
+/// See also: http://answers.unity3d.com/questions/627090/convert-serializedproperty-to-custom-class.html
+/// </summary>
+///
+/// 
+    public static class SerializedPropertyExtensions {
+
+
+        public static bool Inspect(this SerializedProperty prop, string name, Rect pos, GUIContent label)
+        {
+            var changed = false;
+
+            var before = GUI.changed;
+            EditorGUI.PropertyField(pos, prop.FindPropertyRelative(name), label);
+
+            if (GUI.changed && !before) {
+                prop.serializedObject.ApplyModifiedProperties();
+                return true;
             }
-        #else 
+
+            return changed;
+        }
+
+
+        /// <summary>
+        /// Get the object the serialized property holds by using reflection
+        /// </summary>
+        /// <typeparam name="T">The object type that the property contains</typeparam>
+        /// <param name="property"></param>
+        /// <returns>Returns the object type T if it is the type the property actually contains</returns>
+        public static T GetValue<T>(this SerializedProperty property) =>
+            GetNestedObject<T>(property.propertyPath, property.GetRootComponent());
         
-            #if   PEGI
-                [MenuItem("Tools/" + "PEGI" + "/Disable")]
-                public static void DisablePegi() => QcUnity.SetPlatformDirective("PEGI", false);
-            #else
-                [MenuItem("Tools/" + "PEGI" + "/Enable")]
-                public static void EnablePegi() {
-                    QcUnity.SetPlatformDirective("PEGI", true);
+
+        /// <summary>
+        /// Set the value of a field of the property with the type T
+        /// </summary>
+        /// <typeparam name="T">The type of the field that is set</typeparam>
+        /// <param name="property">The serialized property that should be set</param>
+        /// <param name="value">The new value for the specified property</param>
+        /// <returns>Returns if the operation was successful or failed</returns>
+        public static bool SetValue<T>(this SerializedProperty property, T value) {
+
+            object obj = property.GetRootComponent();
+
+            //Iterate to parent object of the value, necessary if it is a nested object
+            string[] fieldStructure = property.propertyPath.Split('.');
+
+            for (int i = 0; i < fieldStructure.Length - 1; i++)
+                obj = GetFieldOrPropertyValue<object>(fieldStructure[i], obj);
+            
+            string fieldName = fieldStructure.Last();
+
+            return SetFieldOrPropertyValue(fieldName, obj, value);
+
+        }
+
+        /// <summary>
+        /// Get the component of a serialized property
+        /// </summary>
+        /// <param name="property">The property that is part of the component</param>
+        /// <returns>The root component of the property</returns>
+        private static Component GetRootComponent(this SerializedProperty property) =>
+             (Component)property.serializedObject.targetObject;
+        
+        /// <summary>
+        /// Iterates through objects to handle objects that are nested in the root object
+        /// </summary>
+        /// <typeparam name="T">The type of the nested object</typeparam>
+        /// <param name="path">Path to the object through other properties e.g. PlayerInformation.Health</param>
+        /// <param name="obj">The root object from which this path leads to the property</param>
+        /// <param name="includeAllBases">Include base classes and interfaces as well</param>
+        /// <returns>Returns the nested object casted to the type T</returns>
+        private static T GetNestedObject<T>(string path, object obj, bool includeAllBases = false) {
+
+            foreach (string part in path.Split('.'))
+                obj = GetFieldOrPropertyValue<object>(part, obj, includeAllBases);
+            
+            return (T)obj;
+        }
+
+        private static T GetFieldOrPropertyValue<T>(string fieldName, object obj, bool includeAllBases = false, BindingFlags bindings = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+        {
+            FieldInfo field = obj.GetType().GetField(fieldName, bindings);
+            if (field != null) return (T)field.GetValue(obj);
+
+            PropertyInfo property = obj.GetType().GetProperty(fieldName, bindings);
+            if (property != null) return (T)property.GetValue(obj, null);
+
+            if (includeAllBases) {
+
+                foreach (Type type in GetBaseClassesAndInterfaces(obj.GetType())) {
+
+                    field = type.GetField(fieldName, bindings);
+                    if (field != null) return (T)field.GetValue(obj);
+
+                    property = type.GetProperty(fieldName, bindings);
+                    if (property != null) return (T)property.GetValue(obj, null);
                 }
+            }
 
-                [MenuItem("Tools/" + "PEGI" + "/Disable")]
-                public static void DisablePegi() {
-                    QcUnity.SetPlatformDirective("NO_PEGI", true);
+            return default(T);
+        }
+
+        public static bool SetFieldOrPropertyValue(string fieldName, object obj, object value, bool includeAllBases = false, BindingFlags bindings = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+        {
+            FieldInfo field = obj.GetType().GetField(fieldName, bindings);
+            if (field != null)
+            {
+                field.SetValue(obj, value);
+                return true;
+            }
+
+            PropertyInfo property = obj.GetType().GetProperty(fieldName, bindings);
+            if (property != null)
+            {
+                property.SetValue(obj, value, null);
+                return true;
+            }
+
+            if (includeAllBases)
+            {
+                foreach (Type type in GetBaseClassesAndInterfaces(obj.GetType()))
+                {
+                    field = type.GetField(fieldName, bindings);
+                    if (field != null)
+                    {
+                        field.SetValue(obj, value);
+                        return true;
+                    }
+
+                    property = type.GetProperty(fieldName, bindings);
+                    if (property != null)
+                    {
+                        property.SetValue(obj, value, null);
+                        return true;
+                    }
                 }
-            #endif
+            }
+            return false;
+        }
 
-        #endif
-        */
+        public static IEnumerable<Type> GetBaseClassesAndInterfaces(this Type type, bool includeSelf = false)
+        {
+            List<Type> allTypes = new List<Type>();
 
+            if (includeSelf) allTypes.Add(type);
+            
+            allTypes.AddRange(
+
+                (type.BaseType == typeof(object)) ? 
+                    type.GetInterfaces() :
+                     Enumerable
+                    .Repeat(type.BaseType, 1)
+                    .Concat(type.GetInterfaces())
+                    .Concat(type.BaseType.GetBaseClassesAndInterfaces())
+                    .Distinct()
+                    
+                    );
+            
+
+            return allTypes;
+        }
+    
     }
-
 
 #endif
 }

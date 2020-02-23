@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using PlayerAndEditorGUI;
+using Object = UnityEngine.Object;
 
 namespace QuizCannersUtilities {
 
@@ -100,7 +101,6 @@ namespace QuizCannersUtilities {
 
 
             #region Inspector
-#if !NO_PEGI
             public int CountForInspector() => elements.Count == 0 ? 1 : elements.CountForInspector();
             
             int _inspected = -1;
@@ -122,7 +122,7 @@ namespace QuizCannersUtilities {
                 }
                 return changed;
             }
-#endif
+
             #endregion
         }
 
@@ -146,8 +146,7 @@ namespace QuizCannersUtilities {
 
         public CfgEncoder Encode() => locked ? new CfgEncoder() : _elements.Encode().Lock(this);
 
-        #if !NO_PEGI
-    
+   
         public int Count => _elements.CountForInspector();
     
         private int _inspected = -1;
@@ -163,8 +162,7 @@ namespace QuizCannersUtilities {
     
             return changed;
         }
-        #endif
-
+    
     }
 
 
@@ -172,15 +170,27 @@ namespace QuizCannersUtilities {
 
     #region Abstract Implementations
 
-    public class ConfigurationsListBase : ScriptableObject, IPEGI {
-        public List<Configuration> configurations = new List<Configuration>();
+    public abstract class ConfigurationsListGeneric<T> : ConfigurationsListBase where T : Configuration
+    {
+
+        public List<T> configurations = new List<T>();
 
         #region Inspector
-        #if !NO_PEGI
 
-        public virtual bool Inspect() => "Configurations".edit_List(ref configurations); 
-        
-        public static bool Inspect<T>(ref T configs, Func<T, T> func) where T : ConfigurationsListBase {
+        public override bool Inspect() => "Configurations".edit_List(ref configurations);
+
+        #endregion
+
+    }
+
+
+    public abstract class ConfigurationsListBase : ScriptableObject, IPEGI
+    {
+
+        public virtual bool Inspect() => false;
+
+        public static bool Inspect<T>(ref T configs) where T : ConfigurationsListBase
+        {
             var changed = false;
 
             if (configs)
@@ -195,7 +205,7 @@ namespace QuizCannersUtilities {
                 "Configs".edit(90, ref configs);
 
                 if (icon.Create.Click("Create new Config"))
-                    configs = QcUnity.CreateScriptableObjectAsset<T>("Tools/Configs", "Config");
+                    configs = QcUnity.CreateScriptableObjectAsset<T>("ScriptableObjects/Configs", "Config");
 
                 pegi.nl();
             }
@@ -203,44 +213,31 @@ namespace QuizCannersUtilities {
             return changed;
         }
 
-        #endif
-        #endregion
-
     }
 
     [Serializable]
-    public class Configuration : AbstractCfg, IPEGI_ListInspect, IGotName
+    public abstract class Configuration : AbstractCfg, IPEGI_ListInspect, IGotName
     {
         public string name;
         public string data;
         
-        public virtual Configuration ActiveConfiguration
-        {
-            get { return null; }
-            set { }
-        }
+        public abstract Configuration ActiveConfiguration { get; set; }
 
         public void SetAsCurrent() {
             ActiveConfiguration = this;
         }
 
-        public virtual void ReadConfigurationToData()
-        {
-        }
+        public abstract CfgEncoder EncodeData();
 
         #region Inspect
-
-#if !NO_PEGI
 
         public string NameForPEGI
         {
             get { return name; }
             set { name = value; }
-            
         }
-    
-
-    public virtual bool InspectInList(IList list, int ind, ref int edited) {
+        
+        public virtual bool InspectInList(IList list, int ind, ref int edited) {
 
             var changed = false;
             var active = ActiveConfiguration;
@@ -270,26 +267,23 @@ namespace QuizCannersUtilities {
                     
                 }
                 else if (icon.SaveAsNew.ClickUnFocus())
-                    ReadConfigurationToData();
+                    data = EncodeData().ToString();
             }
 
-          
+
 
             if (allowOverride)
             {
                 if (icon.Save.ClickUnFocus())
-                    ReadConfigurationToData();
+                    data = EncodeData().ToString();
             }
-        
+
 
             pegi.RestoreBGcolor();
 
             return changed;
         }
-
-
-#endif
-
+       
         #endregion
 
         #region Encode & Decode
@@ -325,10 +319,10 @@ namespace QuizCannersUtilities {
 
     public class StdSimpleReferenceHolder : ICfgSerializeNestedReferences {
         
-        public readonly List<UnityEngine.Object> nestedReferences = new List<UnityEngine.Object>();
-        public int GetReferenceIndex(UnityEngine.Object obj) => nestedReferences.TryGetIndexOrAdd(obj);
+        public readonly List<Object> nestedReferences = new List<Object>();
+        public int GetReferenceIndex(Object obj) => nestedReferences.TryGetIndexOrAdd(obj);
 
-        public T GetReferenced<T>(int index) where T : UnityEngine.Object => nestedReferences.TryGet(index) as T;
+        public T GetReferenced<T>(int index) where T : Object => nestedReferences.TryGet(index) as T;
 
     }
 
@@ -343,16 +337,16 @@ namespace QuizCannersUtilities {
 
         private readonly ListMetaData _listMetaData = new ListMetaData("References");
 
-        [SerializeField] protected List<UnityEngine.Object> nestedReferences = new List<UnityEngine.Object>();
-        public virtual int GetReferenceIndex(UnityEngine.Object obj) => nestedReferences.TryGetIndexOrAdd(obj);
+        [SerializeField] protected List<Object> nestedReferences = new List<Object>();
+        public virtual int GetReferenceIndex(Object obj) => nestedReferences.TryGetIndexOrAdd(obj);
 
-        public virtual T GetReferenced<T>(int index) where T : UnityEngine.Object => nestedReferences.TryGet(index) as T;
+        public virtual T GetReferenced<T>(int index) where T : Object => nestedReferences.TryGet(index) as T;
 
 
         public virtual CfgEncoder Encode() => this.EncodeUnrecognized()
             .Add("listDta", _listMetaData);
 
-        public virtual void Decode(string data) => data.DecodeTagsFor(this);
+        public virtual void Decode(string data) => this.DecodeTagsFrom(data);
 
         public virtual bool Decode(string tg, string data)
         {
@@ -365,11 +359,10 @@ namespace QuizCannersUtilities {
         }
         #endregion
 
-        public StdExplorerData explorer = new StdExplorerData();
+        public ICfgObjectExplorer explorer = new ICfgObjectExplorer();
 
         #region Inspector
-        #if !NO_PEGI
-
+ 
         [ContextMenu("Reset Inspector")] // Because ContextMenu doesn't accepts overrides
         private void Reset() => ResetInspector();
 
@@ -384,7 +377,7 @@ namespace QuizCannersUtilities {
         [SerializeField] public int inspectedItems = -1;
         private int _inspectedDebugItems = -1;
         [SerializeField] private int inspectedReference = -1;
-        EncodedJsonInspector  _jsonInspector = new EncodedJsonInspector();
+      
 
         public virtual bool Inspect()
         {
@@ -422,25 +415,20 @@ namespace QuizCannersUtilities {
             if (("Unrecognized Tags: " + UnrecognizedStd.Count).enter(ref _inspectedDebugItems, 2).nl_ifNotEntered())
                 UnrecognizedStd.Nested_Inspect(ref changed);
 
-            if ("Json Inspector ".enter(ref _inspectedDebugItems, 3).nl())
-                _jsonInspector.Nested_Inspect().nl(ref changed);
-            
-
             if (inspectedItems == -1)
                 pegi.nl();
 
             
             return changed;
         }
-
-        #endif
+        
         #endregion
     }
 
 
     public abstract class AbstractCfg : ICfgSafeEncoding, ICanBeDefaultCfg {
         public abstract CfgEncoder Encode();
-        public virtual void Decode(string data) => data.DecodeTagsFor(this);
+        public virtual void Decode(string data) => this.DecodeTagsFrom(data);
         public abstract bool Decode(string tg, string data);
 
         public LoopLock GetLoopLock { get; } = new LoopLock();
@@ -454,7 +442,7 @@ namespace QuizCannersUtilities {
 #if !UNITY_EDITOR
         [NonSerialized]
         #endif
-        private readonly StdExplorerData _explorer = new StdExplorerData();
+        private readonly ICfgObjectExplorer _explorer = new ICfgObjectExplorer();
         
         public override CfgEncoder Encode() => this.EncodeUnrecognized();
 
@@ -462,16 +450,17 @@ namespace QuizCannersUtilities {
         #region Inspector
 
         public virtual void ResetInspector() {
-            inspectedItems = -1;
+            _inspectedItems = -1;
         }
 
-        public int inspectedItems = -1;
+        public int _inspectedItems = -1;
 
-        #if !NO_PEGI
+        public bool InspectingVisuals() => _inspectedItems == 21;
+
         public virtual bool Inspect() {
             var changed = false;
 
-            if (icon.Debug.enter(ref inspectedItems, 0)) {
+            if (icon.Debug.enter(ref _inspectedItems, 0)) {
                 if (icon.Refresh.Click("Reset Inspector"))
                     ResetInspector();
                 this.CopyPasteStdPegi().nl(ref changed);
@@ -482,7 +471,7 @@ namespace QuizCannersUtilities {
 
             return changed;
         }
-        #endif
+      
         #endregion
     }
 
@@ -491,7 +480,7 @@ namespace QuizCannersUtilities {
 #if !UNITY_EDITOR
         [NonSerialized]
 #endif
-        public StdExplorerData explorer = new StdExplorerData();
+        public ICfgObjectExplorer explorer = new ICfgObjectExplorer();
 
         #region Inspector
 
@@ -510,9 +499,7 @@ namespace QuizCannersUtilities {
 
         [HideInInspector]
         [SerializeField] public int inspectedItems = -1;
-
-
-        #if !NO_PEGI
+        
         [ContextMenu("Reset Inspector")]
         private void Reset() => ResetInspector();
 
@@ -537,8 +524,7 @@ namespace QuizCannersUtilities {
 
             return changed;
         }
-
-      
+        
         private int _inspectedDebugItems = -1;
         public virtual bool Inspect() {
 
@@ -554,11 +540,11 @@ namespace QuizCannersUtilities {
 
             this.CopyPasteStdPegi().nl(ref changed);
 
-            pegi.toggleDefaultInspector().nl();
+            pegi.toggleDefaultInspector(this).nl();
             
             "{0} Debug ".F(this.GetNameForInspector()).nl();
 
-            if (("Cfg Saves: " + explorer.states.Count).enter(ref _inspectedDebugItems, 0).nl())
+            if (("Cfg Saves: " + explorer.CountForInspector()).enter(ref _inspectedDebugItems, 0).nl())
                 explorer.Inspect(this);
 
             if (inspectedItems == -1)
@@ -579,13 +565,16 @@ namespace QuizCannersUtilities {
             if (("Unrecognized Tags: " + UnrecognizedStd.Count).enter(ref _inspectedDebugItems, 2).nl_ifNotEntered())
                 UnrecognizedStd.Nested_Inspect().changes(ref changed);
 
+            if ("Inspect Inspector".enter(ref _inspectedDebugItems, 3).nl())
+                QcUtils.InspectInspector();
+
             if (inspectedItems == -1)
                 pegi.nl();
             
            
             return changed;
         }
-#endif
+
         #endregion
 
         #region Encoding & Decoding
@@ -617,15 +606,11 @@ namespace QuizCannersUtilities {
 
         }
 
-        public virtual CfgEncoder Encode() => this.EncodeUnrecognized()
-#if !NO_PEGI
-            .Add_IfNotNegative("db", inspectedItems)
-#endif
-            ;
+        public virtual CfgEncoder Encode() => this.EncodeUnrecognized().Add_IfNotNegative("db", inspectedItems) ;
 
         public virtual void Decode(string data) {
             UnrecognizedStd.Clear();
-            data.DecodeTagsFor(this);
+            this.DecodeTagsFrom(data);
         }
 
 #endregion
@@ -655,15 +640,14 @@ namespace QuizCannersUtilities {
             if (!data.Contains(StdStart)) return data;
             
             var start = data.IndexOf(StdStart, StringComparison.Ordinal) + StdStart.Length;
-            var end = data.IndexOf(StdEnd, StringComparison.Ordinal);
+            var end = data.LastIndexOf(StdEnd, StringComparison.Ordinal);
 
             data = data.Substring(start, end - start);
                 
             return data;
 
         }
-
-#if !NO_PEGI
+        
         private static ICfg _toCopy;
 
         public static bool CopyPasteStdPegi(this ICfg cfg) {
@@ -691,7 +675,7 @@ namespace QuizCannersUtilities {
                 cfg.EmailData(name, "Use this {0}".F(name));
 
             data = "";
-            if (pegi.edit(ref data).UnFocus()) {
+            if (pegi.edit(ref data).UnFocusIfTrue()) {
                 data = ClearFromExternal(data);
                 return true;
             }
@@ -701,7 +685,7 @@ namespace QuizCannersUtilities {
                 QcUnity.RefreshAssetDatabase();
             }
 
-            if (LoadOnDrop(out data))
+            if (DropStringObject(out data))
                 return true;
 
 
@@ -709,7 +693,6 @@ namespace QuizCannersUtilities {
 
             return false;
         }
-#endif
 
         private static readonly StdSimpleReferenceHolder TmpHolder = new StdSimpleReferenceHolder();
 
@@ -768,9 +751,9 @@ namespace QuizCannersUtilities {
             return cody;
         }
 
-        public static TaggedTypesCfg GetTaggedTypes_Safe<T>(this T obj) where T : IGotClassTag => obj != null ? obj.AllTypes : typeof(T).TryGetTaggedClasses();
+        //public static TaggedTypesCfg GetTaggedTypes_Safe<T>(this T obj) where T : IGotClassTag => obj != null ? obj.AllTypes : typeof(T).TryGetTaggedClasses();
         
-        public static TaggedTypesCfg TryGetTaggedClasses(this Type type)
+       /* public static TaggedTypesCfg TryGetTaggedClasses(this Type type)
         {
 
             if (!typeof(IGotClassTag).IsAssignableFrom(type)) return null;
@@ -784,7 +767,7 @@ namespace QuizCannersUtilities {
                 Debug.Log("{0} does not have Abstract_WithTaggedTypes Attribute");
             
             return null;
-        }
+        }*/
 
         public static List<Type> TryGetDerivedClasses (this Type t) => t.TryGetClassAttribute<DerivedListAttribute>()?.derivedTypes.NullIfEmpty();
             
@@ -792,25 +775,24 @@ namespace QuizCannersUtilities {
         public static string copyBufferValue;
         public static string copyBufferTag;
 
-        public static bool LoadOnDrop(out string txt) {
+        public static bool DropStringObject(out string txt) {
 
             txt = null;
-#if !NO_PEGI
+
             UnityEngine.Object myType = null;
             if (pegi.edit(ref myType)) {
-                txt = QcFile.LoadUtils.TryLoadAsTextAsset(myType);
-                ("Loaded " + myType.name).showNotificationIn3D_Views();
+                txt = QcFile.Loading.TryLoadAsTextAsset(myType);
+                pegi.GameView.ShowNotification("Loaded " + myType.name);
 
                 return true;
             }
-#endif
             return false;
         }
 
-        public static bool LoadOnDrop<T>(this T obj) where T: ICfg
+        public static bool LoadCfgOnDrop<T>(this T obj) where T: ICfg
         {
             string txt;
-            if (LoadOnDrop(out txt)) {
+            if (DropStringObject(out txt)) {
                 obj.Decode(txt);
                 return true;
             }
@@ -818,22 +800,24 @@ namespace QuizCannersUtilities {
             return false;
         }
 
-        public static void UpdatePrefab (this ICfg s, GameObject go) {
+        public static void UpdateCfgPrefab (this ICfg s, GameObject go) {
             var iK = s as IKeepMyCfg;
 
             if (iK != null)
-                iK.SaveStdData();
+                iK.SaveCfgData();
 
             QcUnity.UpdatePrefab(go);
         }
 
-        public static void SaveStdData(this IKeepMyCfg s) {
+        public static void SaveCfgData(this IKeepMyCfg s) {
             if (s != null)
+            {
                 s.ConfigStd = s.Encode().ToString();
-            
+                (s as Object).SetToDirty();
+            }
         }
 
-        public static bool LoadStdData(this IKeepMyCfg s)
+        public static bool LoadCfgData(this IKeepMyCfg s)
         {
             if (s == null)
                 return false;
@@ -846,25 +830,25 @@ namespace QuizCannersUtilities {
         public static T LoadFromAssets<T>(this T s, string fullPath, string name) where T:ICfg, new() {
 			if (s == null)
 				s = new T ();
-            s.Decode(QcFile.LoadUtils.LoadBytesFromAssets(fullPath, name));
+            s.Decode(QcFile.Loading.FromAssets(fullPath, name));
 			return s;
         }
 
         public static ICfg SaveToAssets(this ICfg s, string path, string filename)
         {
-            QcFile.SaveUtils.SaveBytesToAssetsByRelativePath(path, filename, s.Encode().ToString());
+            QcFile.Saving.ToAssets(path, filename, s.Encode().ToString());
             return s;
         }
 
-        public static ICfg SaveToPersistentPath_Json(this ICfg s, string path, string filename)
+        public static ICfg SaveToPersistentPath(this ICfg s, string path, string filename)
         {
-            QcFile.SaveUtils.SaveJsonToPersistentPath(path, filename, s.Encode().ToString());
+            QcFile.Saving.ToPersistentPath(path, filename, s.Encode().ToString());
             return s;
         }
 
-        public static bool LoadFromPersistentPath_Json(this ICfg s, string path, string filename)
+        public static bool LoadFromPersistentPath(this ICfg s, string path, string filename)
         {
-            var data = QcFile.LoadUtils.LoadJsonFromPersistentPath(path, filename);
+            var data = QcFile.Loading.FromPersistentPath(path, filename);
             if (data != null)
             {
                 s.Decode(data);
@@ -873,14 +857,13 @@ namespace QuizCannersUtilities {
             return false;
         }
 
-        public static ICfg SaveToResources_Bytes(this ICfg s, string resFolderPath, string insideResPath, string filename)
+        public static ICfg SaveToResources(this ICfg s, string resFolderPath, string insideResPath, string filename)
         {
-            QcFile.SaveUtils.SaveBytesToResources(resFolderPath, insideResPath, filename, s.Encode().ToString());
+            QcFile.Saving.ToResources(resFolderPath, insideResPath, filename, s.Encode().ToString());
             return s;
         }
 
-        public static T CloneStd<T>(this T obj, ICfgSerializeNestedReferences nested = null) where T : ICfg
-        {
+        public static T CloneCfg<T>(this T obj, ICfgSerializeNestedReferences nested = null) where T : ICfg {
 
             if (QcUnity.IsNullOrDestroyed_Obj(obj)) return default(T);
             
@@ -892,13 +875,11 @@ namespace QuizCannersUtilities {
                 ret.Decode(obj.Encode().ToString());
 
             return ret;
-            
-
         }
 
-        public static bool TryLoadFromResources_Bytes<T>(this T s, string subFolder, string file) where T : ICfg
+        public static bool TryLoadFromResources<T>(this T s, string subFolder, string file) where T : ICfg
         {
-            var load = QcFile.LoadUtils.LoadBytesFromResource(subFolder, file);
+            var load = QcFile.Loading.StringFromResource(subFolder, file);
 
             if (load == null)
                 return false;
@@ -911,7 +892,7 @@ namespace QuizCannersUtilities {
         public static T LoadFromResources<T>(this T s, string subFolder, string file)where T:ICfg, new() {
 			if (s == null)
 				s = new T ();
-			s.Decode(QcFile.LoadUtils.LoadBytesFromResource(subFolder, file));
+			s.Decode(QcFile.Loading.StringFromResource(subFolder, file));
 			return s;
 		}
 
